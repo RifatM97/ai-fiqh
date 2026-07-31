@@ -1,0 +1,23 @@
+[project]
+name = "ai-fiqh"
+version = "0.1.0"
+description = "Grounded Hanafi Fiqh Q&A and exam revision over Nur al-Idah"
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic",
+    "voyageai",
+    "pymupdf",
+    "rank-bm25",
+    "numpy",
+    "pydantic",
+]
+
+[dependency-groups]
+notebook = ["jupyter", "ipykernel"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_fiqh"]
