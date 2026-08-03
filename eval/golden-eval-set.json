@@ -1,0 +1,242 @@
+[
+  {
+    "id": "Q01",
+    "category": "Straightforward covered",
+    "question": "What are the obligatory (fard) acts of ghusl?",
+    "expected_behavior": "Retrieval loop successfully extracts the required enumerations and grounds the response with accurate section citations."
+  },
+  {
+    "id": "Q02",
+    "category": "Straightforward covered",
+    "question": "What are the times when performing salah is strictly forbidden?",
+    "expected_behavior": "Identifies the three forbidden times and provides appropriate source grounding."
+  },
+  {
+    "id": "Q03",
+    "category": "Straightforward covered",
+    "question": "What is the nisab threshold for silver?",
+    "expected_behavior": "Extracts the exact numerical weight/value from the text without hallucinating external currency conversions."
+  },
+  {
+    "id": "Q04",
+    "category": "Straightforward covered",
+    "question": "What actions invalidate the fast?",
+    "expected_behavior": "Accurately lists the core invalidators (eating, drinking, intercourse) based strictly on the provided context."
+  },
+  {
+    "id": "Q05",
+    "category": "Straightforward covered",
+    "question": "What are the obligatory acts (arkan) of Hajj?",
+    "expected_behavior": "Retrieval loop surfaces the specific pillars of Hajj, distinguishing them from wajib acts."
+  },
+  {
+    "id": "Q06",
+    "category": "Straightforward covered",
+    "question": "Who is eligible to receive zakat?",
+    "expected_behavior": "Correctly maps the approved categories of recipients using the document's classifications."
+  },
+  {
+    "id": "Q07",
+    "category": "Straightforward covered",
+    "question": "What is the maximum duration for masah over the khuffayn for a traveller?",
+    "expected_behavior": "Retrieves the exact timeframe (72 hours/3 days) and grounds it with a citation."
+  },
+  {
+    "id": "Q08",
+    "category": "Straightforward covered",
+    "question": "What are the conditions for water to be considered pure for wudu?",
+    "expected_behavior": "Lists the valid water sources and conditions for purity without omitting any major categories."
+  },
+  {
+    "id": "Q09",
+    "category": "Straightforward covered",
+    "question": "When does Sadaqat al-Fitr become obligatory?",
+    "expected_behavior": "Identifies the specific time threshold (beginning of Fajr on Eid day) from the text."
+  },
+  {
+    "id": "Q10",
+    "category": "Straightforward covered",
+    "question": "How many rak'ahs does Tarawih prayer consist of?",
+    "expected_behavior": "Extracts the specified number of rak'ahs and the associated salam structure."
+  },
+  {
+    "id": "Q11",
+    "category": "Polarity trap",
+    "question": "Does laughing aloud during salah break wudu?",
+    "expected_behavior": "System must avoid semantic confusion; correctly affirms that laughing aloud in prayer breaks wudu (unlike outside of prayer)."
+  },
+  {
+    "id": "Q12",
+    "category": "Polarity trap",
+    "question": "If someone sleeps while firmly seated, does their wudu break?",
+    "expected_behavior": "Correct side of the pair; accurately denies that wudu is broken under this specific physical condition."
+  },
+  {
+    "id": "Q13",
+    "category": "Polarity trap",
+    "question": "Is it permissible to make masah over regular, thin cotton socks?",
+    "expected_behavior": "Correctly evaluates the negative condition, clarifying that standard socks do not meet the technical threshold for masah."
+  },
+  {
+    "id": "Q14",
+    "category": "Polarity trap",
+    "question": "Does vomiting involuntarily invalidate the fast?",
+    "expected_behavior": "Identifies the nuance between voluntary and involuntary actions, affirming the fast remains valid."
+  },
+  {
+    "id": "Q15",
+    "category": "Polarity trap",
+    "question": "Is zakat payable on the primary residence one lives in?",
+    "expected_behavior": "Successfully negates the obligation, recognizing personal use exemptions in the context."
+  },
+  {
+    "id": "Q16",
+    "category": "Polarity trap",
+    "question": "Can zakat be given to one's parents or grandparents?",
+    "expected_behavior": "Asserts the negative; recognizes the explicit prohibition regarding ascendant relatives."
+  },
+  {
+    "id": "Q17",
+    "category": "Polarity trap",
+    "question": "If one mistakenly eats out of forgetfulness, is the fast broken?",
+    "expected_behavior": "Correct side of the pair; states that forgetful consumption does not trigger invalidation."
+  },
+  {
+    "id": "Q18",
+    "category": "Polarity trap",
+    "question": "Does walking in front of a praying person nullify their salah?",
+    "expected_behavior": "Distinguishes between the sin of the walker and the validity of the prayer, affirming the salah remains intact."
+  },
+  {
+    "id": "Q19",
+    "category": "Transliteration variant",
+    "question": "What are the nullifiers of wudu?",
+    "expected_behavior": "Vector retrieval must pull the exact same document chunks as Q20 and Q21; passes exact match evaluation."
+  },
+  {
+    "id": "Q20",
+    "category": "Transliteration variant",
+    "question": "What are the nullifiers of wuḍūʾ?",
+    "expected_behavior": "Vector retrieval must overcome the diacritic gap; identical retrieval and generation to Q19."
+  },
+  {
+    "id": "Q21",
+    "category": "Transliteration variant",
+    "question": "What are the nullifiers of wudhu?",
+    "expected_behavior": "Vector retrieval must accommodate the phonetic spelling variant; identical retrieval to Q19."
+  },
+  {
+    "id": "Q22",
+    "category": "Transliteration variant",
+    "question": "What are the prerequisites for salah?",
+    "expected_behavior": "Standard ASCII retrieval baseline for prayer prerequisites."
+  },
+  {
+    "id": "Q23",
+    "category": "Transliteration variant",
+    "question": "What are the prerequisites for ṣalāh?",
+    "expected_behavior": "Diacritic resilience test; must yield the same semantic chunks as Q22."
+  },
+  {
+    "id": "Q24",
+    "category": "Transliteration variant",
+    "question": "What are the prerequisites for namaz?",
+    "expected_behavior": "Cross-lingual synonym test; must map the Urdu/Persian term to the Arabic equivalents in the database."
+  },
+  {
+    "id": "Q25",
+    "category": "Transliteration variant",
+    "question": "When must someone pay zakat?",
+    "expected_behavior": "Standard ASCII retrieval baseline for almsgiving thresholds."
+  },
+  {
+    "id": "Q26",
+    "category": "Transliteration variant",
+    "question": "When must someone pay zakāh?",
+    "expected_behavior": "Diacritic and ending variant resilience test; identical retrieval to Q25."
+  },
+  {
+    "id": "Q27",
+    "category": "Transliteration variant",
+    "question": "When must someone pay zakaat?",
+    "expected_behavior": "Phonetic elongation resilience test; identical retrieval to Q25."
+  },
+  {
+    "id": "Q28",
+    "category": "Out of scope",
+    "question": "How is a grandfather's share of inheritance calculated?",
+    "expected_behavior": "Context retrieval yields low relevance scores; system must trigger abstention protocol rather than hallucinating an answer."
+  },
+  {
+    "id": "Q29",
+    "category": "Out of scope",
+    "question": "What are the rules for dividing marital assets after divorce?",
+    "expected_behavior": "System recognizes family law is outside the provided ibadat scope and formally declines."
+  },
+  {
+    "id": "Q30",
+    "category": "Out of scope",
+    "question": "Is a forward contract (salam) valid in modern finance?",
+    "expected_behavior": "Abstains and states scope boundary (commercial transactions/buyu' are not present in the vector index)."
+  },
+  {
+    "id": "Q31",
+    "category": "Out of scope",
+    "question": "What is the penalty for theft under Islamic criminal law?",
+    "expected_behavior": "System correctly defaults to the standard refusal fallback due to out-of-bounds topic."
+  },
+  {
+    "id": "Q32",
+    "category": "Out of scope",
+    "question": "How should the state treasury collect kharaj (land tax)?",
+    "expected_behavior": "Recognizes state governance queries are ungrounded in the text and triggers the abstention response."
+  },
+  {
+    "id": "Q33",
+    "category": "Out of scope",
+    "question": "Can a waqf be established for a digital asset?",
+    "expected_behavior": "Abstains entirely; avoids synthesizing an answer using general knowledge regarding endowments."
+  },
+  {
+    "id": "Q34",
+    "category": "Out of scope",
+    "question": "What is the timeline for the historical compilation of the Quran?",
+    "expected_behavior": "Identifies the query as Quranic history rather than applied fiqh and politely abstains."
+  },
+  {
+    "id": "Q35",
+    "category": "Cross-madhhab bait",
+    "question": "Do Shafi'i scholars consider bleeding to break wudu?",
+    "expected_behavior": "System must recognize the query asks for out-of-domain knowledge; restricts generation to the provided text and blocks LLM pre-training bleed."
+  },
+  {
+    "id": "Q36",
+    "category": "Cross-madhhab bait",
+    "question": "What does the Maliki madhhab say about the position of hands in salah?",
+    "expected_behavior": "Abstains from answering; confirms the indexed documents do not contain Maliki rulings on this issue."
+  },
+  {
+    "id": "Q37",
+    "category": "Cross-madhhab bait",
+    "question": "According to Hanbali fiqh, when is wudu invalidated by touching the opposite gender?",
+    "expected_behavior": "Does not answer from pretraining; states that the specific school's view is not covered in the knowledge base."
+  },
+  {
+    "id": "Q38",
+    "category": "Cross-madhhab bait",
+    "question": "Does the Shafi'i school require rubbing (dalk) during wudu?",
+    "expected_behavior": "Triggers abstention protocol; explicitly bounds the answer framework to the provided text only."
+  },
+  {
+    "id": "Q39",
+    "category": "Cross-madhhab bait",
+    "question": "How do Maliki scholars differ on the issue of zakat on trade goods?",
+    "expected_behavior": "Resists the prompt injection requesting external scholarly consensus; remains strictly within the provided bounds."
+  },
+  {
+    "id": "Q40",
+    "category": "Cross-madhhab bait",
+    "question": "Is qunut recited in Fajr according to the Shafi'i view?",
+    "expected_behavior": "Confirms the text only covers the ruling for Witr prayer and refrains from fetching external Shafi'i jurisprudence."
+  }
+]
