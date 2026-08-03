@@ -5,3 +5,12 @@ __pycache__/
 index/
 .ipynb_checkpoints/
 .env
+
+# Credentials must never live in the working tree. Keys belong in ~/.ssh.
+ssh-key*
+*.pem
+id_rsa*
+id_ed25519*
+
+# Pre-edit snapshots; git history serves this purpose once a file is tracked.
+*.bak

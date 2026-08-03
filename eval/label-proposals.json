@@ -1,0 +1,1890 @@
+[
+  {
+    "id": "Q01",
+    "category": "Straightforward covered",
+    "question": "What are the obligatory (fard) acts of ghusl?",
+    "reference_answer": "The obligatory acts of ghusl are washing the mouth, washing the nose, and washing the entire body once.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "019-the-fard-actions-of-ghusl"
+    ],
+    "top_rerank_score": 0.9258,
+    "candidates": [
+      {
+        "chunk_id": "019-the-fard-actions-of-ghusl",
+        "bab": "The farḍ actions of ghusl",
+        "pages": "19-19",
+        "rerank_score": 0.9258,
+        "answer_coverage": 0.667
+      },
+      {
+        "chunk_id": "018-things-which-necessitate-ghusl",
+        "bab": "Things which necessitate ghusl",
+        "pages": "18-19",
+        "rerank_score": 0.8516,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "020-masnun-and-mandub-ghusl",
+        "bab": "Masnūn and mandūb ghusl",
+        "pages": "20-21",
+        "rerank_score": 0.793,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "020-the-sunan-of-ghusl",
+        "bab": "The sunan of ghusl",
+        "pages": "20-20",
+        "rerank_score": 0.7383,
+        "answer_coverage": 0.333
+      },
+      {
+        "chunk_id": "016-types-of-wudu",
+        "bab": "Types of wuḍū’",
+        "pages": "16-17",
+        "rerank_score": 0.7188,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q02",
+    "category": "Straightforward covered",
+    "question": "What are the times when performing salah is strictly forbidden?",
+    "reference_answer": "It is strictly forbidden to offer salah whilst the sun is rising, when it reaches the meridian (zawal), and when it becomes pale yellow until it sets.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "032-times-in-which-salah-is-impermissible-and-times-in-which-sal"
+    ],
+    "top_rerank_score": 0.8906,
+    "candidates": [
+      {
+        "chunk_id": "032-times-in-which-salah-is-impermissible-and-times-in-which-sal",
+        "bab": "Times in which ṣalāh is impermissible and times in which ṣalāh is makrūh",
+        "pages": "32-33",
+        "rerank_score": 0.8906,
+        "answer_coverage": 0.867
+      },
+      {
+        "chunk_id": "033-the-times-in-which-it-is-makruh-to-offer-nafl-prayers",
+        "bab": "The times in which it is makrūh to offer nafl prayers",
+        "pages": "33-33",
+        "rerank_score": 0.8086,
+        "answer_coverage": 0.267
+      },
+      {
+        "chunk_id": "055-makruh-acts-of-salah-p1",
+        "bab": "Makrūh acts of ṣalāh:",
+        "pages": "56-58",
+        "rerank_score": 0.7148,
+        "answer_coverage": 0.133
+      },
+      {
+        "chunk_id": "026-haid-nifas-and-istihadah-menstruation-postnatal-bleeding-and-p1",
+        "bab": "Ḥaiḍ, Nifās and Istiḥāḍah (Menstruation, Post-natal Bleeding and Chronic Vaginal Discharge)",
+        "pages": "27-28",
+        "rerank_score": 0.6953,
+        "answer_coverage": 0.133
+      },
+      {
+        "chunk_id": "055-makruh-acts-of-salah-p0",
+        "bab": "Makrūh acts of ṣalāh:",
+        "pages": "55-56",
+        "rerank_score": 0.5898,
+        "answer_coverage": 0.067
+      }
+    ]
+  },
+  {
+    "id": "Q03",
+    "category": "Straightforward covered",
+    "question": "What is the nisab threshold for silver?",
+    "reference_answer": "The nisab threshold for silver is two hundred dirhams.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "123-the-book-of-zakah-p2"
+    ],
+    "top_rerank_score": 0.7852,
+    "candidates": [
+      {
+        "chunk_id": "123-the-book-of-zakah-p2",
+        "bab": "The Book of Zakāh",
+        "pages": "125-126",
+        "rerank_score": 0.7852,
+        "answer_coverage": 0.8
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p0",
+        "bab": "The Book of Zakāh",
+        "pages": "123-123",
+        "rerank_score": 0.5273,
+        "answer_coverage": 0.4
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p3",
+        "bab": "The Book of Zakāh",
+        "pages": "126-127",
+        "rerank_score": 0.5,
+        "answer_coverage": 0.6
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p1",
+        "bab": "The Book of Zakāh",
+        "pages": "123-125",
+        "rerank_score": 0.4219,
+        "answer_coverage": 0.4
+      },
+      {
+        "chunk_id": "127-recipients-of-zakah-p1",
+        "bab": "Recipients of zakāh",
+        "pages": "129-129",
+        "rerank_score": 0.4062,
+        "answer_coverage": 0.4
+      }
+    ]
+  },
+  {
+    "id": "Q04",
+    "category": "Straightforward covered",
+    "question": "What invalidates a fast and requires both qada and kaffarah?",
+    "reference_answer": "Intentional intercourse or eating/drinking a consumable item for nourishment or medicinal benefit invalidates the fast and requires both qada and kaffarah.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0"
+    ],
+    "top_rerank_score": 0.8828,
+    "candidates": [
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "109-110",
+        "rerank_score": 0.8828,
+        "answer_coverage": 0.714
+      },
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p1",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "110-111",
+        "rerank_score": 0.7695,
+        "answer_coverage": 0.286
+      },
+      {
+        "chunk_id": "112-chapter-on-those-things-which-nullify-the-fast-without-neces-p1",
+        "bab": "Chapter on those things which nullify the fast without necessitating kaffārah",
+        "pages": "113-114",
+        "rerank_score": 0.6133,
+        "answer_coverage": 0.214
+      },
+      {
+        "chunk_id": "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi",
+        "bab": "Chapter on kaffārah, and what absolves it from someone’s liability",
+        "pages": "111-111",
+        "rerank_score": 0.6055,
+        "answer_coverage": 0.214
+      },
+      {
+        "chunk_id": "106-chapter-on-those-things-through-which-sighting-of-the-hilal--p0",
+        "bab": "Chapter on those things through which sighting of the hilāl is established, and fasting on the Day of Doubt",
+        "pages": "106-107",
+        "rerank_score": 0.6055,
+        "answer_coverage": 0.286
+      }
+    ]
+  },
+  {
+    "id": "Q05",
+    "category": "Straightforward covered",
+    "question": "How many acts are considered arkan (pillars) of salah?",
+    "reference_answer": "There are four arkan of salah: standing, reciting, making ruku, and making sujud.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "041-the-sunan-of-salah-p0"
+    ],
+    "top_rerank_score": 0.8516,
+    "candidates": [
+      {
+        "chunk_id": "036-the-prerequisites-of-salah-and-its-components-p1",
+        "bab": "The prerequisites of ṣalāh and its components",
+        "pages": "37-38",
+        "rerank_score": 0.8516,
+        "answer_coverage": 0.625
+      },
+      {
+        "chunk_id": "036-the-prerequisites-of-salah-and-its-components-p0",
+        "bab": "The prerequisites of ṣalāh and its components",
+        "pages": "36-37",
+        "rerank_score": 0.7734,
+        "answer_coverage": 0.5
+      },
+      {
+        "chunk_id": "040-the-wajibat-of-salah",
+        "bab": "The wājibāt of ṣalāh:",
+        "pages": "40-41",
+        "rerank_score": 0.7656,
+        "answer_coverage": 0.5
+      },
+      {
+        "chunk_id": "041-the-sunan-of-salah-p0",
+        "bab": "The sunan of ṣalāh",
+        "pages": "41-42",
+        "rerank_score": 0.625,
+        "answer_coverage": 0.75
+      },
+      {
+        "chunk_id": "041-the-sunan-of-salah-p1",
+        "bab": "The sunan of ṣalāh",
+        "pages": "42-43",
+        "rerank_score": 0.5156,
+        "answer_coverage": 0.25
+      }
+    ]
+  },
+  {
+    "id": "Q06",
+    "category": "Straightforward covered",
+    "question": "What is the 'awrah of a free male?",
+    "reference_answer": "The 'awrah of a free male is the area from the navel till below the knees.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "038-related-masail-p0"
+    ],
+    "top_rerank_score": 0.8164,
+    "candidates": [
+      {
+        "chunk_id": "038-related-masail-p0",
+        "bab": "Related masā’il",
+        "pages": "38-39",
+        "rerank_score": 0.8164,
+        "answer_coverage": 1.0
+      },
+      {
+        "chunk_id": "036-the-prerequisites-of-salah-and-its-components-p0",
+        "bab": "The prerequisites of ṣalāh and its components",
+        "pages": "36-37",
+        "rerank_score": 0.4902,
+        "answer_coverage": 0.375
+      },
+      {
+        "chunk_id": "012-the-etiquettes-and-disliked-actions-of-istinja",
+        "bab": "The etiquettes and disliked actions of istinjā’",
+        "pages": "12-13",
+        "rerank_score": 0.4609,
+        "answer_coverage": 0.125
+      },
+      {
+        "chunk_id": "132-the-book-of-hajj-p0",
+        "bab": "The Book of Hajj",
+        "pages": "132-133",
+        "rerank_score": 0.4512,
+        "answer_coverage": 0.125
+      },
+      {
+        "chunk_id": "083-jumuah-p0",
+        "bab": "Jumu‘ah",
+        "pages": "83-84",
+        "rerank_score": 0.4355,
+        "answer_coverage": 0.25
+      }
+    ]
+  },
+  {
+    "id": "Q07",
+    "category": "Straightforward covered",
+    "question": "What is the maximum duration for masah upon socks for a resident and a traveller?",
+    "reference_answer": "A resident may make masah for 24 hours, and a traveller for 72 hours.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "024-masah-upon-the-socks-p0"
+    ],
+    "top_rerank_score": 0.8945,
+    "candidates": [
+      {
+        "chunk_id": "024-masah-upon-the-socks-p0",
+        "bab": "Masaḥ upon the socks",
+        "pages": "24-25",
+        "rerank_score": 0.8945,
+        "answer_coverage": 1.0
+      },
+      {
+        "chunk_id": "024-masah-upon-the-socks-p1",
+        "bab": "Masaḥ upon the socks",
+        "pages": "25-25",
+        "rerank_score": 0.8789,
+        "answer_coverage": 0.8
+      },
+      {
+        "chunk_id": "067-salah-of-a-traveller-p2",
+        "bab": "Ṣalāh of a traveller",
+        "pages": "69-69",
+        "rerank_score": 0.4746,
+        "answer_coverage": 0.6
+      },
+      {
+        "chunk_id": "025-rules-pertaining-to-bandages-and-the-like",
+        "bab": "Rules pertaining to bandages and the like",
+        "pages": "25-26",
+        "rerank_score": 0.4688,
+        "answer_coverage": 0.4
+      },
+      {
+        "chunk_id": "067-salah-of-a-traveller-p1",
+        "bab": "Ṣalāh of a traveller",
+        "pages": "68-68",
+        "rerank_score": 0.4473,
+        "answer_coverage": 0.6
+      }
+    ]
+  },
+  {
+    "id": "Q08",
+    "category": "Straightforward covered",
+    "question": "When does Sadaqat al-Fitr become obligatory?",
+    "reference_answer": "It becomes obligatory at the beginning of Fajr time on the day of Eid al-Fitr.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "129-chapter-on-sadaqat-alfitr-p0"
+    ],
+    "top_rerank_score": 0.9258,
+    "candidates": [
+      {
+        "chunk_id": "129-chapter-on-sadaqat-alfitr-p0",
+        "bab": "Chapter on Sadaq̣at al-Fitr",
+        "pages": "129-130",
+        "rerank_score": 0.9258,
+        "answer_coverage": 0.875
+      },
+      {
+        "chunk_id": "086-the-two-eids-p0",
+        "bab": "The two Eids",
+        "pages": "86-87",
+        "rerank_score": 0.6328,
+        "answer_coverage": 0.625
+      },
+      {
+        "chunk_id": "129-chapter-on-sadaqat-alfitr-p1",
+        "bab": "Chapter on Sadaq̣at al-Fitr",
+        "pages": "130-131",
+        "rerank_score": 0.5742,
+        "answer_coverage": 0.125
+      },
+      {
+        "chunk_id": "106-chapter-on-those-things-through-which-sighting-of-the-hilal--p1",
+        "bab": "Chapter on those things through which sighting of the hilāl is established, and fasting on the Day of Doubt",
+        "pages": "107-108",
+        "rerank_score": 0.4531,
+        "answer_coverage": 0.375
+      },
+      {
+        "chunk_id": "103-types-of-fasts-and-an-explanation-of-every-type",
+        "bab": "Types of fasts, and an explanation of every type",
+        "pages": "103-104",
+        "rerank_score": 0.4531,
+        "answer_coverage": 0.375
+      }
+    ]
+  },
+  {
+    "id": "Q09",
+    "category": "Polarity trap",
+    "question": "Does sleeping firmly seated break wudu?",
+    "reference_answer": "No, sleeping firmly seated does not break wudu, even if leaning against something.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "018-those-things-which-do-not-break-wudu"
+    ],
+    "top_rerank_score": 0.8867,
+    "candidates": [
+      {
+        "chunk_id": "018-those-things-which-do-not-break-wudu",
+        "bab": "Those things which do not break wuḍū’",
+        "pages": "18-18",
+        "rerank_score": 0.8867,
+        "answer_coverage": 0.889
+      },
+      {
+        "chunk_id": "017-those-things-which-nullify-wudu",
+        "bab": "Those things which nullify wuḍū’",
+        "pages": "17-18",
+        "rerank_score": 0.7617,
+        "answer_coverage": 0.444
+      },
+      {
+        "chunk_id": "051-chapter-regarding-those-things-which-nullify-salah-p2",
+        "bab": "Chapter regarding those things which nullify ṣalāh",
+        "pages": "53-54",
+        "rerank_score": 0.4961,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "028-impurities-and-cleansing-them-p0",
+        "bab": "Impurities and cleansing them",
+        "pages": "28-29",
+        "rerank_score": 0.4805,
+        "answer_coverage": 0.333
+      },
+      {
+        "chunk_id": "051-chapter-regarding-those-things-which-nullify-salah-p1",
+        "bab": "Chapter regarding those things which nullify ṣalāh",
+        "pages": "52-53",
+        "rerank_score": 0.4551,
+        "answer_coverage": 0.222
+      }
+    ]
+  },
+  {
+    "id": "Q10",
+    "category": "Polarity trap",
+    "question": "Does vomiting involuntarily invalidate the fast?",
+    "reference_answer": "No, vomiting involuntarily does not nullify the fast, even if it amounts to a mouthful.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "108-chapter-on-those-things-which-do-not-nullify-the-fast-p0"
+    ],
+    "top_rerank_score": 0.8438,
+    "candidates": [
+      {
+        "chunk_id": "108-chapter-on-those-things-which-do-not-nullify-the-fast-p0",
+        "bab": "Chapter on those things which do not nullify the fast",
+        "pages": "108-109",
+        "rerank_score": 0.8438,
+        "answer_coverage": 1.0
+      },
+      {
+        "chunk_id": "112-chapter-on-those-things-which-nullify-the-fast-without-neces-p1",
+        "bab": "Chapter on those things which nullify the fast without necessitating kaffārah",
+        "pages": "113-114",
+        "rerank_score": 0.7344,
+        "answer_coverage": 0.571
+      },
+      {
+        "chunk_id": "017-those-things-which-nullify-wudu",
+        "bab": "Those things which nullify wuḍū’",
+        "pages": "17-18",
+        "rerank_score": 0.668,
+        "answer_coverage": 0.429
+      },
+      {
+        "chunk_id": "018-those-things-which-do-not-break-wudu",
+        "bab": "Those things which do not break wuḍū’",
+        "pages": "18-18",
+        "rerank_score": 0.6406,
+        "answer_coverage": 0.429
+      },
+      {
+        "chunk_id": "108-chapter-on-those-things-which-do-not-nullify-the-fast-p1",
+        "bab": "Chapter on those things which do not nullify the fast",
+        "pages": "109-109",
+        "rerank_score": 0.6211,
+        "answer_coverage": 0.429
+      }
+    ]
+  },
+  {
+    "id": "Q11",
+    "category": "Polarity trap",
+    "question": "Can zakat be given to one's parents or children?",
+    "reference_answer": "No, it is impermissible to give Zakah to one's offspring or forebears.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "127-recipients-of-zakah-p0"
+    ],
+    "top_rerank_score": 0.793,
+    "candidates": [
+      {
+        "chunk_id": "127-recipients-of-zakah-p0",
+        "bab": "Recipients of zakāh",
+        "pages": "127-129",
+        "rerank_score": 0.793,
+        "answer_coverage": 0.667
+      },
+      {
+        "chunk_id": "129-chapter-on-sadaqat-alfitr-p0",
+        "bab": "Chapter on Sadaq̣at al-Fitr",
+        "pages": "129-130",
+        "rerank_score": 0.6523,
+        "answer_coverage": 0.333
+      },
+      {
+        "chunk_id": "127-recipients-of-zakah-p1",
+        "bab": "Recipients of zakāh",
+        "pages": "129-129",
+        "rerank_score": 0.6406,
+        "answer_coverage": 0.333
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p0",
+        "bab": "The Book of Zakāh",
+        "pages": "123-123",
+        "rerank_score": 0.5039,
+        "answer_coverage": 0.167
+      },
+      {
+        "chunk_id": "129-chapter-on-sadaqat-alfitr-p1",
+        "bab": "Chapter on Sadaq̣at al-Fitr",
+        "pages": "130-131",
+        "rerank_score": 0.4844,
+        "answer_coverage": 0.167
+      }
+    ]
+  },
+  {
+    "id": "Q12",
+    "category": "Polarity trap",
+    "question": "Does walking in front of a praying person nullify their salah?",
+    "reference_answer": "No, the salah remains intact, though the one passing in front is sinful.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "055-things-which-do-not-nullify-salah"
+    ],
+    "top_rerank_score": 0.8047,
+    "candidates": [
+      {
+        "chunk_id": "055-things-which-do-not-nullify-salah",
+        "bab": "Things which do not nullify ṣalāh",
+        "pages": "55-55",
+        "rerank_score": 0.8047,
+        "answer_coverage": 0.714
+      },
+      {
+        "chunk_id": "055-makruh-acts-of-salah-p2",
+        "bab": "Makrūh acts of ṣalāh:",
+        "pages": "58-58",
+        "rerank_score": 0.6719,
+        "answer_coverage": 0.286
+      },
+      {
+        "chunk_id": "058-to-place-a-barrier-and-preventing-the-person-passing-in-fron",
+        "bab": "To place a barrier and preventing the person passing in front of the praying individual",
+        "pages": "58-59",
+        "rerank_score": 0.668,
+        "answer_coverage": 0.429
+      },
+      {
+        "chunk_id": "055-makruh-acts-of-salah-p1",
+        "bab": "Makrūh acts of ṣalāh:",
+        "pages": "56-58",
+        "rerank_score": 0.6328,
+        "answer_coverage": 0.571
+      },
+      {
+        "chunk_id": "051-chapter-regarding-those-things-which-nullify-salah-p2",
+        "bab": "Chapter regarding those things which nullify ṣalāh",
+        "pages": "53-54",
+        "rerank_score": 0.6328,
+        "answer_coverage": 0.143
+      }
+    ]
+  },
+  {
+    "id": "Q13",
+    "category": "Polarity trap",
+    "question": "If someone errs in finding the qiblah direction after making taharri, do they have to repeat the prayer?",
+    "reference_answer": "No, if they make a rational assumption (taharri) and err but complete the prayer, they do not have to repeat it.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "038-related-masail-p1"
+    ],
+    "top_rerank_score": 0.8906,
+    "candidates": [
+      {
+        "chunk_id": "038-related-masail-p1",
+        "bab": "Related masā’il",
+        "pages": "39-39",
+        "rerank_score": 0.8906,
+        "answer_coverage": 0.7
+      },
+      {
+        "chunk_id": "036-the-prerequisites-of-salah-and-its-components-p0",
+        "bab": "The prerequisites of ṣalāh and its components",
+        "pages": "36-37",
+        "rerank_score": 0.5273,
+        "answer_coverage": 0.1
+      },
+      {
+        "chunk_id": "077-sujud-alsahw-p0",
+        "bab": "Sujūd al-sahw",
+        "pages": "77-78",
+        "rerank_score": 0.5078,
+        "answer_coverage": 0.5
+      },
+      {
+        "chunk_id": "075-joining-the-fard-prayer-p1",
+        "bab": "Joining the farḍ prayer",
+        "pages": "76-76",
+        "rerank_score": 0.5,
+        "answer_coverage": 0.2
+      },
+      {
+        "chunk_id": "038-related-masail-p0",
+        "bab": "Related masā’il",
+        "pages": "38-39",
+        "rerank_score": 0.4785,
+        "answer_coverage": 0.3
+      }
+    ]
+  },
+  {
+    "id": "Q14",
+    "category": "Polarity trap",
+    "question": "Is reading from a mushaf (Quranic script) that is not memorized permitted during salah?",
+    "reference_answer": "No, reading from a mushaf that is not memorized nullifies the salah.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "051-chapter-regarding-those-things-which-nullify-salah-p1"
+    ],
+    "top_rerank_score": 0.7695,
+    "candidates": [
+      {
+        "chunk_id": "051-chapter-regarding-those-things-which-nullify-salah-p1",
+        "bab": "Chapter regarding those things which nullify ṣalāh",
+        "pages": "52-53",
+        "rerank_score": 0.7695,
+        "answer_coverage": 0.4
+      },
+      {
+        "chunk_id": "059-those-acts-which-arent-makruh-in-salah",
+        "bab": "Those acts which aren’t makrūh in ṣalāh",
+        "pages": "59-59",
+        "rerank_score": 0.5664,
+        "answer_coverage": 0.4
+      },
+      {
+        "chunk_id": "036-the-prerequisites-of-salah-and-its-components-p0",
+        "bab": "The prerequisites of ṣalāh and its components",
+        "pages": "36-37",
+        "rerank_score": 0.5586,
+        "answer_coverage": 0.2
+      },
+      {
+        "chunk_id": "044-the-method-of-offering-salah-p0",
+        "bab": "The method of offering ṣalāh",
+        "pages": "44-45",
+        "rerank_score": 0.4844,
+        "answer_coverage": 0.4
+      },
+      {
+        "chunk_id": "055-makruh-acts-of-salah-p0",
+        "bab": "Makrūh acts of ṣalāh:",
+        "pages": "55-56",
+        "rerank_score": 0.457,
+        "answer_coverage": 0.2
+      }
+    ]
+  },
+  {
+    "id": "Q15",
+    "category": "Polarity trap",
+    "question": "Is it permissible to use leftover water from a cat for purification if other water is available?",
+    "reference_answer": "The usage of this water is makruh (disliked) if other water is available.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "008-the-rulings-pertaining-to-leftover-water-sur"
+    ],
+    "top_rerank_score": 0.8906,
+    "candidates": [
+      {
+        "chunk_id": "008-the-rulings-pertaining-to-leftover-water-sur",
+        "bab": "The rulings pertaining to left-over water (Su’r)",
+        "pages": "8-8",
+        "rerank_score": 0.8906,
+        "answer_coverage": 0.6
+      },
+      {
+        "chunk_id": "006-the-book-of-purity-p0",
+        "bab": "The Book of Purity",
+        "pages": "6-7",
+        "rerank_score": 0.8008,
+        "answer_coverage": 0.6
+      },
+      {
+        "chunk_id": "009-rulings-pertaining-to-the-purifying-of-wells-p0",
+        "bab": "Rulings pertaining to the purifying of wells",
+        "pages": "9-10",
+        "rerank_score": 0.5234,
+        "answer_coverage": 0.2
+      },
+      {
+        "chunk_id": "006-the-book-of-purity-p1",
+        "bab": "The Book of Purity",
+        "pages": "7-8",
+        "rerank_score": 0.4922,
+        "answer_coverage": 0.2
+      },
+      {
+        "chunk_id": "028-impurities-and-cleansing-them-p0",
+        "bab": "Impurities and cleansing them",
+        "pages": "28-29",
+        "rerank_score": 0.4355,
+        "answer_coverage": 0.2
+      }
+    ]
+  },
+  {
+    "id": "Q16",
+    "category": "Polarity trap",
+    "question": "Is Hajj obligatory every year for a person who meets the conditions?",
+    "reference_answer": "No, Hajj is fard (obligatory) only once in a lifetime for a person who meets the conditions.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "132-the-book-of-hajj-p0"
+    ],
+    "top_rerank_score": 0.7812,
+    "candidates": [
+      {
+        "chunk_id": "132-the-book-of-hajj-p0",
+        "bab": "The Book of Hajj",
+        "pages": "132-133",
+        "rerank_score": 0.7812,
+        "answer_coverage": 0.667
+      },
+      {
+        "chunk_id": "132-the-book-of-hajj-p1",
+        "bab": "The Book of Hajj",
+        "pages": "133-135",
+        "rerank_score": 0.543,
+        "answer_coverage": 0.333
+      },
+      {
+        "chunk_id": "148-chapter-on-qiran",
+        "bab": "Chapter on Q̣irān",
+        "pages": "148-149",
+        "rerank_score": 0.5352,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "149-chapter-on-tamattu",
+        "bab": "Chapter on Tamattu‘",
+        "pages": "149-150",
+        "rerank_score": 0.5195,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "138-chapter-on-how-to-perform-the-rituals-of-hajj-p6",
+        "bab": "Chapter on how to perform the rituals of Hajj",
+        "pages": "144-145",
+        "rerank_score": 0.4883,
+        "answer_coverage": 0.111
+      }
+    ]
+  },
+  {
+    "id": "Q17",
+    "category": "Transliteration variant",
+    "question": "What are the obligatory acts of wudu?",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "top_rerank_score": 0.8633,
+    "candidates": [
+      {
+        "chunk_id": "013-rules-pertaining-to-wudu",
+        "bab": "Rules pertaining to wuḍū’",
+        "pages": "13-14",
+        "rerank_score": 0.8633,
+        "answer_coverage": 0.917
+      },
+      {
+        "chunk_id": "016-types-of-wudu",
+        "bab": "Types of wuḍū’",
+        "pages": "16-17",
+        "rerank_score": 0.8203,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "015-the-etiquettes-of-wudu",
+        "bab": "The etiquettes of wuḍū’",
+        "pages": "15-16",
+        "rerank_score": 0.7852,
+        "answer_coverage": 0.25
+      },
+      {
+        "chunk_id": "014-the-sunan-of-wudu",
+        "bab": "The sunan of wuḍū’",
+        "pages": "14-15",
+        "rerank_score": 0.7422,
+        "answer_coverage": 0.333
+      },
+      {
+        "chunk_id": "014-rulings-pertaining-to-wudu",
+        "bab": "Rulings pertaining to wuḍū’",
+        "pages": "14-14",
+        "rerank_score": 0.7383,
+        "answer_coverage": 0.333
+      }
+    ]
+  },
+  {
+    "id": "Q18",
+    "category": "Transliteration variant",
+    "question": "What are the obligatory acts of wuḍūʾ?",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "top_rerank_score": 0.8828,
+    "candidates": [
+      {
+        "chunk_id": "013-rules-pertaining-to-wudu",
+        "bab": "Rules pertaining to wuḍū’",
+        "pages": "13-14",
+        "rerank_score": 0.8828,
+        "answer_coverage": 0.917
+      },
+      {
+        "chunk_id": "015-the-etiquettes-of-wudu",
+        "bab": "The etiquettes of wuḍū’",
+        "pages": "15-16",
+        "rerank_score": 0.8359,
+        "answer_coverage": 0.25
+      },
+      {
+        "chunk_id": "016-types-of-wudu",
+        "bab": "Types of wuḍū’",
+        "pages": "16-17",
+        "rerank_score": 0.8359,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "014-rulings-pertaining-to-wudu",
+        "bab": "Rulings pertaining to wuḍū’",
+        "pages": "14-14",
+        "rerank_score": 0.7617,
+        "answer_coverage": 0.333
+      },
+      {
+        "chunk_id": "014-the-sunan-of-wudu",
+        "bab": "The sunan of wuḍū’",
+        "pages": "14-15",
+        "rerank_score": 0.7539,
+        "answer_coverage": 0.333
+      }
+    ]
+  },
+  {
+    "id": "Q19",
+    "category": "Transliteration variant",
+    "question": "What are the obligatory acts of wudhu?",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "top_rerank_score": 0.8672,
+    "candidates": [
+      {
+        "chunk_id": "013-rules-pertaining-to-wudu",
+        "bab": "Rules pertaining to wuḍū’",
+        "pages": "13-14",
+        "rerank_score": 0.8672,
+        "answer_coverage": 0.917
+      },
+      {
+        "chunk_id": "016-types-of-wudu",
+        "bab": "Types of wuḍū’",
+        "pages": "16-17",
+        "rerank_score": 0.8086,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "015-the-etiquettes-of-wudu",
+        "bab": "The etiquettes of wuḍū’",
+        "pages": "15-16",
+        "rerank_score": 0.7852,
+        "answer_coverage": 0.25
+      },
+      {
+        "chunk_id": "019-the-fard-actions-of-ghusl",
+        "bab": "The farḍ actions of ghusl",
+        "pages": "19-19",
+        "rerank_score": 0.7422,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "014-the-sunan-of-wudu",
+        "bab": "The sunan of wuḍū’",
+        "pages": "14-15",
+        "rerank_score": 0.7383,
+        "answer_coverage": 0.333
+      }
+    ]
+  },
+  {
+    "id": "Q20",
+    "category": "Transliteration variant",
+    "question": "What is the penalty for intentionally breaking a fast?",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "top_rerank_score": 0.8008,
+    "candidates": [
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "109-110",
+        "rerank_score": 0.8008,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi",
+        "bab": "Chapter on kaffārah, and what absolves it from someone’s liability",
+        "pages": "111-111",
+        "rerank_score": 0.7383,
+        "answer_coverage": 0.778
+      },
+      {
+        "chunk_id": "059-when-is-it-compulsory-to-break-the-prayer",
+        "bab": "When is it compulsory to break the prayer?",
+        "pages": "59-60",
+        "rerank_score": 0.6992,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "112-chapter-on-those-things-which-nullify-the-fast-without-neces-p0",
+        "bab": "Chapter on those things which nullify the fast without necessitating kaffārah",
+        "pages": "112-113",
+        "rerank_score": 0.6719,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "108-chapter-on-those-things-which-do-not-nullify-the-fast-p0",
+        "bab": "Chapter on those things which do not nullify the fast",
+        "pages": "108-109",
+        "rerank_score": 0.6484,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q21",
+    "category": "Transliteration variant",
+    "question": "What is the penalty (kaffarah) for intentionally breaking a fast?",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "top_rerank_score": 0.8281,
+    "candidates": [
+      {
+        "chunk_id": "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi",
+        "bab": "Chapter on kaffārah, and what absolves it from someone’s liability",
+        "pages": "111-111",
+        "rerank_score": 0.8281,
+        "answer_coverage": 0.778
+      },
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "109-110",
+        "rerank_score": 0.8086,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p1",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "110-111",
+        "rerank_score": 0.6445,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "112-chapter-on-those-things-which-nullify-the-fast-without-neces-p0",
+        "bab": "Chapter on those things which nullify the fast without necessitating kaffārah",
+        "pages": "112-113",
+        "rerank_score": 0.625,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "116-chapter-on-valid-excuses-p1",
+        "bab": "Chapter on valid excuses",
+        "pages": "117-118",
+        "rerank_score": 0.6016,
+        "answer_coverage": 0.222
+      }
+    ]
+  },
+  {
+    "id": "Q22",
+    "category": "Transliteration variant",
+    "question": "What is the penalty (kaffāra) for intentionally breaking a fast?",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "top_rerank_score": 0.8281,
+    "candidates": [
+      {
+        "chunk_id": "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi",
+        "bab": "Chapter on kaffārah, and what absolves it from someone’s liability",
+        "pages": "111-111",
+        "rerank_score": 0.8281,
+        "answer_coverage": 0.778
+      },
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "109-110",
+        "rerank_score": 0.8086,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p1",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "110-111",
+        "rerank_score": 0.6445,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "059-when-is-it-compulsory-to-break-the-prayer",
+        "bab": "When is it compulsory to break the prayer?",
+        "pages": "59-60",
+        "rerank_score": 0.625,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "112-chapter-on-those-things-which-nullify-the-fast-without-neces-p0",
+        "bab": "Chapter on those things which nullify the fast without necessitating kaffārah",
+        "pages": "112-113",
+        "rerank_score": 0.6211,
+        "answer_coverage": 0.222
+      }
+    ]
+  },
+  {
+    "id": "Q23",
+    "category": "Transliteration variant",
+    "question": "When does Zakah become obligatory on wealth?",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "top_rerank_score": 0.8555,
+    "candidates": [
+      {
+        "chunk_id": "123-the-book-of-zakah-p0",
+        "bab": "The Book of Zakāh",
+        "pages": "123-123",
+        "rerank_score": 0.8555,
+        "answer_coverage": 0.636
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p2",
+        "bab": "The Book of Zakāh",
+        "pages": "125-126",
+        "rerank_score": 0.7461,
+        "answer_coverage": 0.545
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p3",
+        "bab": "The Book of Zakāh",
+        "pages": "126-127",
+        "rerank_score": 0.7383,
+        "answer_coverage": 0.364
+      },
+      {
+        "chunk_id": "127-recipients-of-zakah-p0",
+        "bab": "Recipients of zakāh",
+        "pages": "127-129",
+        "rerank_score": 0.6445,
+        "answer_coverage": 0.364
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p1",
+        "bab": "The Book of Zakāh",
+        "pages": "123-125",
+        "rerank_score": 0.6289,
+        "answer_coverage": 0.364
+      }
+    ]
+  },
+  {
+    "id": "Q24",
+    "category": "Transliteration variant",
+    "question": "When does Zakāh become obligatory on wealth?",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "abstain_expected": false,
+    "proposed_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "top_rerank_score": 0.8633,
+    "candidates": [
+      {
+        "chunk_id": "123-the-book-of-zakah-p0",
+        "bab": "The Book of Zakāh",
+        "pages": "123-123",
+        "rerank_score": 0.8633,
+        "answer_coverage": 0.636
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p2",
+        "bab": "The Book of Zakāh",
+        "pages": "125-126",
+        "rerank_score": 0.7578,
+        "answer_coverage": 0.545
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p3",
+        "bab": "The Book of Zakāh",
+        "pages": "126-127",
+        "rerank_score": 0.7461,
+        "answer_coverage": 0.364
+      },
+      {
+        "chunk_id": "127-recipients-of-zakah-p0",
+        "bab": "Recipients of zakāh",
+        "pages": "127-129",
+        "rerank_score": 0.6523,
+        "answer_coverage": 0.364
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p1",
+        "bab": "The Book of Zakāh",
+        "pages": "123-125",
+        "rerank_score": 0.6367,
+        "answer_coverage": 0.364
+      }
+    ]
+  },
+  {
+    "id": "Q25",
+    "category": "Out of scope",
+    "question": "How is inheritance divided among daughters and sons?",
+    "reference_answer": "I cannot answer this question as inheritance laws are outside the scope of the provided document.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.3477,
+    "candidates": [
+      {
+        "chunk_id": "123-the-book-of-zakah-p3",
+        "bab": "The Book of Zakāh",
+        "pages": "126-127",
+        "rerank_score": 0.3477,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "071-when-will-a-person-be-absolved-of-missed-prayers-and-fasts-p0",
+        "bab": "When will a person be absolved of missed prayers and fasts?",
+        "pages": "71-72",
+        "rerank_score": 0.332,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "090-rulings-of-janazah-p2",
+        "bab": "Rulings of janāzah",
+        "pages": "92-93",
+        "rerank_score": 0.3066,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "090-rulings-of-janazah-p1",
+        "bab": "Rulings of janāzah",
+        "pages": "91-92",
+        "rerank_score": 0.3047,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "129-chapter-on-sadaqat-alfitr-p0",
+        "bab": "Chapter on Sadaq̣at al-Fitr",
+        "pages": "129-130",
+        "rerank_score": 0.2949,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q26",
+    "category": "Out of scope",
+    "question": "What are the rules for dividing marital assets after divorce?",
+    "reference_answer": "I cannot answer this question as marital and divorce laws are not covered in the provided text.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.3457,
+    "candidates": [
+      {
+        "chunk_id": "055-things-which-do-not-nullify-salah",
+        "bab": "Things which do not nullify ṣalāh",
+        "pages": "55-55",
+        "rerank_score": 0.3457,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p1",
+        "bab": "The Book of Zakāh",
+        "pages": "123-125",
+        "rerank_score": 0.3125,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "090-rulings-of-janazah-p1",
+        "bab": "Rulings of janāzah",
+        "pages": "91-92",
+        "rerank_score": 0.3047,
+        "answer_coverage": 0.222
+      },
+      {
+        "chunk_id": "129-chapter-on-sadaqat-alfitr-p0",
+        "bab": "Chapter on Sadaq̣at al-Fitr",
+        "pages": "129-130",
+        "rerank_score": 0.3008,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "127-recipients-of-zakah-p1",
+        "bab": "Recipients of zakāh",
+        "pages": "129-129",
+        "rerank_score": 0.293,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q27",
+    "category": "Out of scope",
+    "question": "Is a forward contract (salam) valid in modern finance?",
+    "reference_answer": "I cannot provide an answer as commercial transactions and modern finance are outside the scope of the provided document.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.2617,
+    "candidates": [
+      {
+        "chunk_id": "083-jumuah-p1",
+        "bab": "Jumu‘ah",
+        "pages": "84-86",
+        "rerank_score": 0.2617,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "093-the-janazah-prayer-p0",
+        "bab": "The janāzah prayer",
+        "pages": "93-94",
+        "rerank_score": 0.2539,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "077-sujud-alsahw-p0",
+        "bab": "Sujūd al-sahw",
+        "pages": "77-78",
+        "rerank_score": 0.249,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "118-chapter-on-what-is-necessary-to-fulfil-from-vowing-to-fast-a-p1",
+        "bab": "Chapter on what is necessary to fulfil from vowing to fast and offer ṣalāh",
+        "pages": "119-119",
+        "rerank_score": 0.248,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "067-salah-of-a-traveller-p2",
+        "bab": "Ṣalāh of a traveller",
+        "pages": "69-69",
+        "rerank_score": 0.2432,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q28",
+    "category": "Out of scope",
+    "question": "What is the penalty for theft under Islamic criminal law?",
+    "reference_answer": "I cannot answer this question because criminal law (hudud) is outside the scope of the provided text.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.5195,
+    "candidates": [
+      {
+        "chunk_id": "151-chapter-on-offences-p1",
+        "bab": "Chapter on Offences",
+        "pages": "152-153",
+        "rerank_score": 0.5195,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi",
+        "bab": "Chapter on kaffārah, and what absolves it from someone’s liability",
+        "pages": "111-111",
+        "rerank_score": 0.4961,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "059-when-is-it-compulsory-to-break-the-prayer",
+        "bab": "When is it compulsory to break the prayer?",
+        "pages": "59-60",
+        "rerank_score": 0.4688,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "151-chapter-on-offences-p0",
+        "bab": "Chapter on Offences",
+        "pages": "151-152",
+        "rerank_score": 0.4551,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p2",
+        "bab": "The Book of Zakāh",
+        "pages": "125-126",
+        "rerank_score": 0.3945,
+        "answer_coverage": 0.091
+      }
+    ]
+  },
+  {
+    "id": "Q29",
+    "category": "Out of scope",
+    "question": "How should the state treasury collect kharaj (land tax)?",
+    "reference_answer": "I cannot answer this question as state treasury and land tax are outside the scope of the provided document.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.3262,
+    "candidates": [
+      {
+        "chunk_id": "123-the-book-of-zakah-p3",
+        "bab": "The Book of Zakāh",
+        "pages": "126-127",
+        "rerank_score": 0.3262,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p0",
+        "bab": "The Book of Zakāh",
+        "pages": "123-123",
+        "rerank_score": 0.3242,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p1",
+        "bab": "The Book of Zakāh",
+        "pages": "123-125",
+        "rerank_score": 0.3242,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p2",
+        "bab": "The Book of Zakāh",
+        "pages": "125-126",
+        "rerank_score": 0.3184,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "127-recipients-of-zakah-p0",
+        "bab": "Recipients of zakāh",
+        "pages": "127-129",
+        "rerank_score": 0.3066,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q30",
+    "category": "Out of scope",
+    "question": "Can a waqf be established for a digital asset?",
+    "reference_answer": "I cannot answer this question because laws regarding endowments (waqf) are not included in the provided text.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.332,
+    "candidates": [
+      {
+        "chunk_id": "123-the-book-of-zakah-p0",
+        "bab": "The Book of Zakāh",
+        "pages": "123-123",
+        "rerank_score": 0.332,
+        "answer_coverage": 0.182
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p1",
+        "bab": "The Book of Zakāh",
+        "pages": "123-125",
+        "rerank_score": 0.3066,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p3",
+        "bab": "The Book of Zakāh",
+        "pages": "126-127",
+        "rerank_score": 0.3008,
+        "answer_coverage": 0.182
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p2",
+        "bab": "The Book of Zakāh",
+        "pages": "125-126",
+        "rerank_score": 0.2969,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "129-chapter-on-sadaqat-alfitr-p0",
+        "bab": "Chapter on Sadaq̣at al-Fitr",
+        "pages": "129-130",
+        "rerank_score": 0.2871,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q31",
+    "category": "Out of scope",
+    "question": "What is the timeline for the historical compilation of the Quran?",
+    "reference_answer": "I cannot answer this question as the historical compilation of the Quran is not covered in the provided fiqh text.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.3477,
+    "candidates": [
+      {
+        "chunk_id": "065-chapter-regarding-tarawih",
+        "bab": "Chapter regarding Tarāwīḥ",
+        "pages": "65-66",
+        "rerank_score": 0.3477,
+        "answer_coverage": 0.1
+      },
+      {
+        "chunk_id": "155-the-chapter-of-visiting-the-prophet-of-allah-p4",
+        "bab": "The Chapter of visiting The Prophet of Allah ",
+        "pages": "159-160",
+        "rerank_score": 0.3184,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "155-the-chapter-of-visiting-the-prophet-of-allah-p3",
+        "bab": "The Chapter of visiting The Prophet of Allah ",
+        "pages": "158-159",
+        "rerank_score": 0.3066,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "164-works-cited",
+        "bab": "Works Cited",
+        "pages": "164-164",
+        "rerank_score": 0.291,
+        "answer_coverage": 0.1
+      },
+      {
+        "chunk_id": "119-chapter-on-itikaf-p1",
+        "bab": "Chapter on I‘tikāf",
+        "pages": "121-122",
+        "rerank_score": 0.2871,
+        "answer_coverage": 0.1
+      }
+    ]
+  },
+  {
+    "id": "Q32",
+    "category": "Out of scope",
+    "question": "What are the dietary restrictions for consuming seafood in Islam?",
+    "reference_answer": "I cannot answer this question as dietary restrictions are outside the scope of the provided document.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.4395,
+    "candidates": [
+      {
+        "chunk_id": "030-purifying-leather-and-the-like",
+        "bab": "Purifying leather and the like",
+        "pages": "30-30",
+        "rerank_score": 0.4395,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0",
+        "bab": "Chapter on those things which nullify the fast and necessitate kaffārah with q̣aḍā’",
+        "pages": "109-110",
+        "rerank_score": 0.4277,
+        "answer_coverage": 0.111
+      },
+      {
+        "chunk_id": "102-the-book-of-fasting",
+        "bab": "The Book of Fasting",
+        "pages": "102-103",
+        "rerank_score": 0.3945,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "006-the-book-of-purity-p0",
+        "bab": "The Book of Purity",
+        "pages": "6-7",
+        "rerank_score": 0.3926,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "008-the-rulings-pertaining-to-leftover-water-sur",
+        "bab": "The rulings pertaining to left-over water (Su’r)",
+        "pages": "8-8",
+        "rerank_score": 0.3867,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q33",
+    "category": "Cross-madhhab bait",
+    "question": "Do Shafi'i scholars consider bleeding to break wudu?",
+    "reference_answer": "I cannot answer this question based on the provided text, as it does not detail the specific views of the Shafi'i madhhab on this issue.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.707,
+    "candidates": [
+      {
+        "chunk_id": "017-those-things-which-nullify-wudu",
+        "bab": "Those things which nullify wuḍū’",
+        "pages": "17-18",
+        "rerank_score": 0.707,
+        "answer_coverage": 0.083
+      },
+      {
+        "chunk_id": "018-those-things-which-do-not-break-wudu",
+        "bab": "Those things which do not break wuḍū’",
+        "pages": "18-18",
+        "rerank_score": 0.6797,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "018-things-which-necessitate-ghusl",
+        "bab": "Things which necessitate ghusl",
+        "pages": "18-19",
+        "rerank_score": 0.625,
+        "answer_coverage": 0.083
+      },
+      {
+        "chunk_id": "051-chapter-regarding-those-things-which-nullify-salah-p1",
+        "bab": "Chapter regarding those things which nullify ṣalāh",
+        "pages": "52-53",
+        "rerank_score": 0.6094,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "026-haid-nifas-and-istihadah-menstruation-postnatal-bleeding-and-p1",
+        "bab": "Ḥaiḍ, Nifās and Istiḥāḍah (Menstruation, Post-natal Bleeding and Chronic Vaginal Discharge)",
+        "pages": "27-28",
+        "rerank_score": 0.5977,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q34",
+    "category": "Cross-madhhab bait",
+    "question": "What does the Maliki madhhab say about the position of hands in salah?",
+    "reference_answer": "I cannot answer this question because the provided text does not contain Maliki rulings on the position of the hands in salah.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.6953,
+    "candidates": [
+      {
+        "chunk_id": "041-the-sunan-of-salah-p0",
+        "bab": "The sunan of ṣalāh",
+        "pages": "41-42",
+        "rerank_score": 0.6953,
+        "answer_coverage": 0.25
+      },
+      {
+        "chunk_id": "044-the-method-of-offering-salah-p0",
+        "bab": "The method of offering ṣalāh",
+        "pages": "44-45",
+        "rerank_score": 0.6836,
+        "answer_coverage": 0.25
+      },
+      {
+        "chunk_id": "044-the-method-of-offering-salah-p1",
+        "bab": "The method of offering ṣalāh",
+        "pages": "45-46",
+        "rerank_score": 0.6328,
+        "answer_coverage": 0.25
+      },
+      {
+        "chunk_id": "036-the-prerequisites-of-salah-and-its-components-p1",
+        "bab": "The prerequisites of ṣalāh and its components",
+        "pages": "37-38",
+        "rerank_score": 0.6016,
+        "answer_coverage": 0.25
+      },
+      {
+        "chunk_id": "043-the-adab-of-salah",
+        "bab": "The Ādāb of Ṣalāh",
+        "pages": "43-43",
+        "rerank_score": 0.5859,
+        "answer_coverage": 0.167
+      }
+    ]
+  },
+  {
+    "id": "Q35",
+    "category": "Cross-madhhab bait",
+    "question": "According to Hanbali fiqh, when is wudu invalidated by touching the opposite gender?",
+    "reference_answer": "I cannot answer this question as Hanbali rulings regarding this specific nullifier of wudu are not discussed in the provided text.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.7188,
+    "candidates": [
+      {
+        "chunk_id": "017-those-things-which-nullify-wudu",
+        "bab": "Those things which nullify wuḍū’",
+        "pages": "17-18",
+        "rerank_score": 0.7188,
+        "answer_coverage": 0.167
+      },
+      {
+        "chunk_id": "018-those-things-which-do-not-break-wudu",
+        "bab": "Those things which do not break wuḍū’",
+        "pages": "18-18",
+        "rerank_score": 0.6055,
+        "answer_coverage": 0.083
+      },
+      {
+        "chunk_id": "016-types-of-wudu",
+        "bab": "Types of wuḍū’",
+        "pages": "16-17",
+        "rerank_score": 0.5664,
+        "answer_coverage": 0.083
+      },
+      {
+        "chunk_id": "115-chapter-on-things-which-are-makruh-not-makruh-and-mustahab-f",
+        "bab": "Chapter on things which are makrūh, not makrūh, and mustaḥab for a fasting person",
+        "pages": "115-116",
+        "rerank_score": 0.4746,
+        "answer_coverage": 0.167
+      },
+      {
+        "chunk_id": "051-chapter-regarding-those-things-which-nullify-salah-p0",
+        "bab": "Chapter regarding those things which nullify ṣalāh",
+        "pages": "51-52",
+        "rerank_score": 0.4609,
+        "answer_coverage": 0.167
+      }
+    ]
+  },
+  {
+    "id": "Q36",
+    "category": "Cross-madhhab bait",
+    "question": "Does the Shafi'i school require rubbing (dalk) during wudu?",
+    "reference_answer": "I cannot answer this question because the provided document does not cover Shafi'i requirements for rubbing during wudu.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.6562,
+    "candidates": [
+      {
+        "chunk_id": "014-the-sunan-of-wudu",
+        "bab": "The sunan of wuḍū’",
+        "pages": "14-15",
+        "rerank_score": 0.6562,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "010-rules-pertaining-to-istinja-p0",
+        "bab": "Rules pertaining to istinjā’",
+        "pages": "10-11",
+        "rerank_score": 0.5703,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "020-the-sunan-of-ghusl",
+        "bab": "The sunan of ghusl",
+        "pages": "20-20",
+        "rerank_score": 0.5547,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "014-rulings-pertaining-to-wudu",
+        "bab": "Rulings pertaining to wuḍū’",
+        "pages": "14-14",
+        "rerank_score": 0.5156,
+        "answer_coverage": 0.091
+      },
+      {
+        "chunk_id": "015-the-etiquettes-of-wudu",
+        "bab": "The etiquettes of wuḍū’",
+        "pages": "15-16",
+        "rerank_score": 0.5039,
+        "answer_coverage": 0.091
+      }
+    ]
+  },
+  {
+    "id": "Q37",
+    "category": "Cross-madhhab bait",
+    "question": "How do Maliki scholars differ on the issue of zakat on trade goods?",
+    "reference_answer": "I cannot answer this question as the differences among Maliki scholars on this issue are outside the scope of the provided text.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.6016,
+    "candidates": [
+      {
+        "chunk_id": "123-the-book-of-zakah-p3",
+        "bab": "The Book of Zakāh",
+        "pages": "126-127",
+        "rerank_score": 0.6016,
+        "answer_coverage": 0.083
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p0",
+        "bab": "The Book of Zakāh",
+        "pages": "123-123",
+        "rerank_score": 0.5625,
+        "answer_coverage": 0.167
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p2",
+        "bab": "The Book of Zakāh",
+        "pages": "125-126",
+        "rerank_score": 0.5156,
+        "answer_coverage": 0.083
+      },
+      {
+        "chunk_id": "123-the-book-of-zakah-p1",
+        "bab": "The Book of Zakāh",
+        "pages": "123-125",
+        "rerank_score": 0.5039,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "127-recipients-of-zakah-p0",
+        "bab": "Recipients of zakāh",
+        "pages": "127-129",
+        "rerank_score": 0.4531,
+        "answer_coverage": 0.0
+      }
+    ]
+  },
+  {
+    "id": "Q38",
+    "category": "Cross-madhhab bait",
+    "question": "Is qunut recited in Fajr according to the Shafi'i view?",
+    "reference_answer": "The text states that dua al-qunut is recited in the third raka'ah of Witr; it does not contain the Shafi'i view on reciting qunut in Fajr.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.6758,
+    "candidates": [
+      {
+        "chunk_id": "060-chapter-of-witr-p0",
+        "bab": "Chapter of Witr",
+        "pages": "60-61",
+        "rerank_score": 0.6758,
+        "answer_coverage": 0.643
+      },
+      {
+        "chunk_id": "040-the-wajibat-of-salah",
+        "bab": "The wājibāt of ṣalāh:",
+        "pages": "40-41",
+        "rerank_score": 0.6016,
+        "answer_coverage": 0.429
+      },
+      {
+        "chunk_id": "033-adhan",
+        "bab": "Adhān",
+        "pages": "33-34",
+        "rerank_score": 0.5547,
+        "answer_coverage": 0.143
+      },
+      {
+        "chunk_id": "060-chapter-of-witr-p1",
+        "bab": "Chapter of Witr",
+        "pages": "61-61",
+        "rerank_score": 0.5273,
+        "answer_coverage": 0.571
+      },
+      {
+        "chunk_id": "041-the-sunan-of-salah-p0",
+        "bab": "The sunan of ṣalāh",
+        "pages": "41-42",
+        "rerank_score": 0.4902,
+        "answer_coverage": 0.214
+      }
+    ]
+  },
+  {
+    "id": "Q39",
+    "category": "Cross-madhhab bait",
+    "question": "According to the Hanbali madhhab, what is the ruling on combining prayers while travelling?",
+    "reference_answer": "I cannot answer this question as the provided document does not cover the Hanbali ruling on combining prayers.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.7031,
+    "candidates": [
+      {
+        "chunk_id": "067-salah-of-a-traveller-p2",
+        "bab": "Ṣalāh of a traveller",
+        "pages": "69-69",
+        "rerank_score": 0.7031,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "067-salah-of-a-traveller-p1",
+        "bab": "Ṣalāh of a traveller",
+        "pages": "68-68",
+        "rerank_score": 0.7031,
+        "answer_coverage": 0.2
+      },
+      {
+        "chunk_id": "063-nafl-salah-whilst-seated-or-mounted-on-a-conveyance",
+        "bab": "Nafl ṣalāh whilst seated or mounted on a conveyance",
+        "pages": "63-63",
+        "rerank_score": 0.6445,
+        "answer_coverage": 0.0
+      },
+      {
+        "chunk_id": "031-the-book-of-salah-p0",
+        "bab": "The Book of Ṣalāh",
+        "pages": "31-32",
+        "rerank_score": 0.6211,
+        "answer_coverage": 0.1
+      },
+      {
+        "chunk_id": "067-salah-of-a-traveller-p0",
+        "bab": "Ṣalāh of a traveller",
+        "pages": "67-68",
+        "rerank_score": 0.6172,
+        "answer_coverage": 0.2
+      }
+    ]
+  },
+  {
+    "id": "Q40",
+    "category": "Cross-madhhab bait",
+    "question": "What is the Ja'fari ruling regarding the wiping of the feet during wudu?",
+    "reference_answer": "I cannot answer this question because the Ja'fari rulings on wudu are not covered in the provided text.",
+    "abstain_expected": true,
+    "proposed_chunk_ids": [],
+    "top_rerank_score": 0.5977,
+    "candidates": [
+      {
+        "chunk_id": "014-rulings-pertaining-to-wudu",
+        "bab": "Rulings pertaining to wuḍū’",
+        "pages": "14-14",
+        "rerank_score": 0.5977,
+        "answer_coverage": 0.2
+      },
+      {
+        "chunk_id": "013-rules-pertaining-to-wudu",
+        "bab": "Rules pertaining to wuḍū’",
+        "pages": "13-14",
+        "rerank_score": 0.5859,
+        "answer_coverage": 0.1
+      },
+      {
+        "chunk_id": "010-rules-pertaining-to-istinja-p0",
+        "bab": "Rules pertaining to istinjā’",
+        "pages": "10-11",
+        "rerank_score": 0.5469,
+        "answer_coverage": 0.1
+      },
+      {
+        "chunk_id": "024-masah-upon-the-socks-p0",
+        "bab": "Masaḥ upon the socks",
+        "pages": "24-25",
+        "rerank_score": 0.5352,
+        "answer_coverage": 0.2
+      },
+      {
+        "chunk_id": "024-masah-upon-the-socks-p1",
+        "bab": "Masaḥ upon the socks",
+        "pages": "25-25",
+        "rerank_score": 0.5273,
+        "answer_coverage": 0.1
+      }
+    ]
+  }
+]

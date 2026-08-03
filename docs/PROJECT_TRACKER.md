@@ -20,9 +20,11 @@
 | `ingest.py` → `index/chunks.json` | Done ✅ — **177 chunks, verified** |
 | `index.py` — hybrid retrieval | Done ✅ — **smoke-tested, polarity case passes** |
 | `index/embeddings.npy` | Built ✅ — 177 × 1024, `voyage-4-large` |
-| Golden eval set | Written ✅ — **40 questions, all five §4 categories** |
-| Eval harness (`eval/run_eval.py`) | Not started — needs `chunk_id` labels first |
-| `retrieve.py` / `qa.py` / `revision.py` | Not started |
+| Golden eval set | Written ✅ — **40 questions, 8/category, all with reference answers** |
+| Golden set labelling | Done ✅ — `expected_chunk_ids`, `should_abstain`, `variant_group` |
+| `MIN_RERANK_SCORE` | Measured ✅ — **0.74**, gate 40/40 |
+| Eval harness (`eval/run_eval.py`) | Not started |
+| `retrieve.py` / `qa.py` / `revision.py` / `prompts.py` / `schemas.py` | Not started |
 
 ### Ingestion results (2026-07-30)
 
@@ -58,16 +60,39 @@ every intermediate ranking for notebook inspection.
 > Dense retrieval alone ranked the two contrasting sections #1 and #2 — i.e. it
 > *did* confuse them, exactly as predicted — and expansion made that harmless.
 
+### `expand_groups()` bugs — fixed 2026-08-03
+
+Both bugs logged below under *Known issues* are now fixed:
+
+- **Mutation bug:** the final renumbering loop wrote `s.rank` in place on the
+  caller's reranked list, corrupting `trace.reranked` after the fact (RERANK
+  stage showed `1, 3, 4, 4, 5`). Fixed by copying via `dataclasses.replace`
+  instead of mutating in place.
+- **Misattribution bug:** a chunk the reranker had already found independently
+  got relabelled `"group-expansion"` and inherited the *trigger's* score.
+  Fixed — such chunks now keep their own score and provenance; only genuinely
+  new siblings are marked as expanded.
+
+Verified on the same smoke query: RERANK now reads `1, 2, 3, 4, 5`, and the
+expanded wuḍūʾ sibling shows its own real score `0.5195` instead of the
+inherited `0.8320`.
+
 ---
 
 ## Environment
 
 - **Path:** `/Users/rifatmahammod/Developer/personal-projects/ai-fiqh`
 - **Python:** 3.13.0 via `uv` venv at `.venv/`, all deps installed
-- **Git:** initialised; one commit (`04966b3`) on `main`
+- **Git:** work lands directly on `main`. Remote is
+  `git@github.com:RifatM97/ai-fiqh.git`; local `main` has run ahead of
+  `origin/main` before, so check `git status -sb` before assuming it is pushed.
 - **Credentials:** `.env` at repo root holds `ANTHROPIC_API_KEY` and
-  `VOYAGE_API_KEY`. Gitignored (`.gitignore:7`), loaded via `python-dotenv`.
+  `VOYAGE_API_KEY`. Gitignored, loaded via `python-dotenv`. An SSH keypair was
+  found loose in the repo root on 2026-08-03 (never committed) and moved to
+  `~/.ssh/`; `.gitignore` now blocks `ssh-key*`, `*.pem`, `id_rsa*`, `id_ed25519*`.
 - **Voyage billing:** payment method added 2026-08-03 — see *Throttling* below.
+  Throttle constants raised the same day; cold rebuild now **8.3 seconds**
+  (down from ~9 minutes).
 - **No poppler / `pdftoppm`** on this machine. PDF text extraction works via
   `uv run --with pymupdf python …`; anything needing page rasterisation will
   require `brew install poppler` first.
@@ -217,62 +242,121 @@ All nine are answered in [research.md §5](research.md). Summary:
   in `.env`. Voyage is exercised and working; the Anthropic key is present but
   **not yet exercised** — nothing calls Claude until `qa.py` exists.
 
-### Open questions added 2026-08-03
+### Open questions added 2026-08-03 — both resolved, same day
 
-1. **`MIN_RERANK_SCORE` is an unvalidated placeholder (0.40).** It is the §1.7
-   layer-2 abstention gate and is currently a guess. It must be set by sweeping
-   it against false-abstention rate on the golden set (step 8), not by intuition.
-   The one live query scored 0.832, so 0.40 is not obviously wrong — but one data
-   point is not a threshold.
-2. **Golden set has no `chunk_id` labels**, so retrieval recall@5 cannot be
-   computed — and that is the metric that says whether `index.py` actually works.
-   Labelling is the gating task for the eval harness.
+1. ~~**`MIN_RERANK_SCORE` is an unvalidated placeholder (0.40).**~~ **Resolved —
+   measured, not guessed: raised to 0.74.** Distribution over the labelled
+   golden set (n=40): answerable (n=24) min 0.769 / median 0.863 / max 0.926;
+   should-abstain (n=16) min 0.262 / median 0.598 / max 0.719. Cleanly
+   separable; any threshold in (0.719, 0.769) splits them. Set to 0.74,
+   mid-band. Rationale is written into the code comment. See *Golden eval set*
+   below for the caveats — they matter more than the number.
+2. ~~**Golden set has no `chunk_id` labels**~~ **Resolved — labelled.**
+   `expected_chunk_ids`, `should_abstain`, `variant_group` added to all 40
+   questions via `eval/label_chunks.py` (propose) → `eval/apply_labels.py`
+   (commit). See *Golden eval set* below.
 
 ---
 
-## Golden eval set (2026-08-03)
+## Golden eval set (2026-08-03, rebalanced + labelled same day)
 
 Written by hand. Started as `eval/golden-eval-set.xlsx` — 30 content questions
 (Purity 10 / Salah 11 / Zakah 4 / Fasting 3 / Hajj 2) with free-text answers,
 all of them the "straightforward covered" category. Then extended to the full
-§4 design as **`eval/golden-eval-set.json`, 40 questions**, all five categories
-represented:
+§4 design as `eval/golden-eval-set.json`, and later **rebalanced to exactly 40
+questions, 8 per category** (supersedes the earlier 10/9/8/7/6 breakdown):
 
 | Category | Count |
 |---|---|
-| Straightforward covered | 10 |
-| Transliteration variant | 9 |
+| Straightforward covered | 8 |
 | Polarity trap | 8 |
-| Out of scope | 7 |
-| Cross-madhhab bait | 6 |
+| Transliteration variant | 8 |
+| Out of scope | 8 |
+| Cross-madhhab bait | 8 |
 
-Schema is `{id, category, question, expected_behavior}` — behaviour rather than
-reference text, which is right: "abstains correctly" has no gold string to match.
+Every question now also has a hand-written `reference_answer`. Note: the
+abstention categories' reference answers are refusal texts, not content.
 
-**Two gaps before `run_eval.py` can be written:**
+### Labelling — closes the `chunk_id` gap
 
-- **No `chunk_id` field.** Recall@5 needs the correct chunk labelled per question.
-  §4 says to do this while writing the questions; it wasn't, so it is now a
-  separate pass. Only applies to the 27 in-scope questions — out-of-scope and
-  cross-madhhab bait have no correct chunk by construction.
-- **The 30 original content questions and their answers are not in the JSON** —
-  only 10 straightforward-covered survived the extension. The xlsx still holds
-  them. Worth deciding whether to merge them back; they are real hand-written
-  Fiqh content and re-deriving them is not free.
+Two scripts, deliberately split so proposing (heuristic) and committing
+(human decision) are never the same run:
+
+- **`eval/label_chunks.py`** — runs each question through the retriever with
+  `expand=False`, ranks candidates by `answer_coverage` (the fraction of the
+  *reference answer's* content words present in the chunk), flags weak
+  proposals, and prints the gate calibration table. Writes
+  `eval/label-proposals.json`, commits nothing.
+- **`eval/apply_labels.py`** — writes reviewed labels into the golden set.
+  Only ever adds fields; raises `SystemExit` if any hand-written key would be
+  lost. Wrote a one-time `eval/golden-eval-set.json.bak` backup first
+  (`eval/` is untracked, so there was no git safety net).
+
+Three fields added: `expected_chunk_ids` (24 labelled, the 16 abstention-only
+questions get `[]`), `should_abstain`, and `variant_group` (3 groups linking
+the transliteration triples: wudu-fard Q17-19, sawm-kaffarah Q20-22,
+zakah-obligation Q23-24).
+
+**One manual override — worth recording as a lesson.** Q05 ("how many arkan
+of salah"): the coverage heuristic picked `041-the-sunan-of-salah-p0` (cov
+0.75) because the reference answer's words — standing, rukū', sujūd — also
+occur in the 51-item sunan list. The real definition is in
+`036-the-prerequisites-of-salah-and-its-components-p1` (p37): "Arkān of ṣalāh
+/ Four from the above-mentioned twenty seven are arkān." Retrieval had ranked
+it #1 (rr=0.852) all along — **the heuristic was wrong and retrieval was
+right.** Q14 was flagged weak (cov 0.40) but verified correct: the book
+phrases it as "recite a portion of the Qur'an which he hasn't memorised
+looking into the muṣḥaf" (p52), so low coverage was vocabulary mismatch, not
+a bad label.
+
+### `MIN_RERANK_SCORE` calibration
+
+See resolved open question #1 above for the numbers and threshold. **The
+caveats matter more than the number:** the threshold is fitted on the same
+set the eval reports against, so this is not evidence of generalisation; the
+margin is only 0.05; and the tightest negatives are cross-madhhab bait (max
+0.719) — predictably, since the *topic* is in the book and only the madhhab
+is not. Those are exactly the cases §1.7 layers 1/3/4 exist for, and a clean
+gate number is not a reason to weaken them.
+
+### Current measured scores
+
+**Gate 40/40, retrieval recall@5 24/24, transliteration variants 3/3 groups
+agree.**
+
+Recall@5 needs a methodological caveat, not a flat "100%": it was initially
+circular, because labels were derived from retrieval's own top-5, so a chunk
+retrieval never surfaced could never have become a label. Cross-checked by
+recomputing `answer_coverage` over **all 177 chunks** independently of
+retrieval. That produced 4 disagreements (Q05, Q08, Q14, Q15), and all four
+were verified to be heuristic errors rather than missed labels — e.g.
+`008-the-rulings-pertaining-to-leftover-water-sur` genuinely mentions
+cats/su'r while `012-istinja` does not; `129-chapter-on-sadaqat-alfitr-p0` is
+plainly right for a Sadaqat al-Fitr question. The sweep found no chunk that
+retrieval had missed, so recall@5 = 24/24 now has genuine independent
+support — though the coverage heuristic is itself a weak oracle.
+
+**Remaining gap:** the 30 original xlsx content questions are only partially
+folded in — the JSON carries 8 "Straightforward covered", so 20 of the 30
+still exist only in `eval/golden-eval-set.xlsx`. Still worth merging in; they
+are real hand-written Fiqh content and re-deriving them is not free.
 
 ---
 
-## Known issues in `index.py` — found by the smoke test, not yet fixed
+## Known issues in `index.py` — found by the smoke test, fixed 2026-08-03
 
-1. **`expand_groups()` mutates the `Scored` objects it was handed.** The final
-   renumbering loop writes `s.rank` in place, and `trace.reranked` holds the same
-   objects, so inspecting the RERANK stage after expansion shows corrupted ranks
-   (observed: `1, 3, 4, 4, 5`). Fix with `dataclasses.replace` so expansion
-   returns copies. **This only damages the trace, not the retrieved set** — but
-   the trace is the whole reason there is no vector store, so it matters.
-2. **A chunk that was already reranked gets relabelled `group-expansion`** if a
-   sibling pulls it in first, and inherits the trigger's score instead of its own.
-   Cosmetic, same root cause, fix in the same pass.
+Both bugs below are now fixed — see *Retrieval results* above for the fix
+description and verification. Left here for the record of what the smoke test
+caught:
+
+1. ~~`expand_groups()` mutates the `Scored` objects it was handed.~~ The final
+   renumbering loop wrote `s.rank` in place, and `trace.reranked` held the same
+   objects, so inspecting the RERANK stage after expansion showed corrupted
+   ranks (observed: `1, 3, 4, 4, 5`). Fixed with `dataclasses.replace` so
+   expansion returns copies.
+2. ~~A chunk that was already reranked gets relabelled `group-expansion`~~ if a
+   sibling pulled it in first, and inherited the trigger's score instead of its
+   own. Same root cause, fixed in the same pass.
 
 ---
 
@@ -313,7 +397,14 @@ and the constants are one edit away from unthrottled:
 
 **A payment method was added the same day**, so `EMBED_BATCH_TOKENS`,
 `TPM_BUDGET` and `MIN_REQUEST_INTERVAL` can now be raised and the build drops to
-seconds. They are the only thing making it slow. *Not yet raised.*
+seconds. They are the only thing making it slow.
+
+**Raised, same day.** `EMBED_BATCH_TOKENS` 8,000 → 32,000; `TPM_BUDGET` 10,000 →
+1,000,000; `MIN_REQUEST_INTERVAL` 20.0 → 0.0. Cold rebuild measured at **8.3
+seconds** (3 batches, 89,210 tokens), down from ~9 minutes. The retry/backoff
+path and checkpointing were deliberately kept as-is — they cost nothing when
+unused, and the failure mode they guard against (losing a build to one 429)
+doesn't go away just because it's rarer now.
 
 ---
 
@@ -333,29 +424,36 @@ loading. Line 3 now reads a single colon; the frontmatter parses.
 
 ## Next steps
 
-Full build order in [research.md §6](research.md). **Steps 1–6 are done** — both
-credentials are in place, retrieval works, and the golden set exists. Remaining:
+Full build order in [research.md §6](research.md). **Steps 1–8 are now done** —
+both credentials are in place, retrieval works, the `expand_groups()` trace
+bugs are fixed, the throttle constants are raised, and the golden set exists,
+is rebalanced, is labelled, and has a measured gate threshold. Remaining:
 
-1. **Fix the two `expand_groups()` trace bugs** (see *Known issues* above). Small,
-   and worth doing before the trace gets relied on for tuning.
-2. **Label `chunk_id` on the 27 in-scope golden questions.** Gates recall@5, which
-   gates knowing whether retrieval works. Propose labels by running each question
-   through `Retriever.search` and spot-check the answers by hand.
-3. `eval/run_eval.py` — a table, no framework (research.md §4).
-4. Q&A pipeline (`qa.py`) with all four abstention layers (research.md §1.7).
-   First thing to actually exercise `ANTHROPIC_API_KEY`.
-5. Run eval; **sweep `MIN_RERANK_SCORE`** against false-abstention rate.
-6. Revision mode: MCQs + flashcards, with corpus-drawn distractors (research.md §2.3).
-7. `notebooks/explore.ipynb` — the phase-1 interface. `SearchTrace.show()` exists
-   to be driven from here; nothing uses it yet.
-8. Streamlit UI.
+1. `eval/run_eval.py` — a table, no framework (research.md §4). The pieces it
+   needs (labels, gate threshold, reference answers) are all in place now.
+2. Q&A pipeline (`qa.py`, `prompts.py`, `schemas.py`) with all four abstention
+   layers (research.md §1.7). First thing to actually exercise
+   `ANTHROPIC_API_KEY`.
+3. `retrieve.py` — thin wrapper `index.py`'s `Retriever` is presumably meant
+   to sit behind; not started.
+4. Revision mode (`revision.py`): MCQs + flashcards, with corpus-drawn
+   distractors (research.md §2.3).
+5. `notebooks/explore.ipynb` — the phase-1 interface. `SearchTrace.show()`
+   exists to be driven from here; nothing uses it yet.
+6. Streamlit UI.
 
-> The golden set existing is *not* the same as it being usable. Step 2 is the real
-> gate now — until questions carry chunk labels, the eval can measure abstention
-> and citation validity but not retrieval, which is the half just built.
+Also outstanding, unblocked, low cost:
+- **Merge the remaining 20 of the 30 xlsx content questions** into the JSON
+  golden set (see *Golden eval set* above).
+- Update the stale routing line in `.claude/CLAUDE.md` (still says
+  "Automatically span between sub-agents depending on what the user asking" —
+  flagged 2026-07-27, still not fixed).
 
-Also outstanding, unblocked, low cost: raise the Voyage throttle constants now
-that billing is enabled, and update the stale routing line in `.claude/CLAUDE.md`.
+> **Commit state.** `6838e0a` (2026-08-03 14:37) captured `index.py` in full —
+> including the `expand_groups()` fixes and the raised throttle constants — plus
+> the golden set, the first tracker pass, and `python-dotenv`. What followed it
+> is the gate calibration (`MIN_RERANK_SCORE` 0.40 → 0.74), the labelling
+> scripts, the labelled golden set, and this tracker pass.
 
 ### Known limitation to revisit
 

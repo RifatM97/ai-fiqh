@@ -62,9 +62,17 @@ TOP_K = 5  # after rerank, before group expansion
 RRF_K = 60  # standard reciprocal-rank-fusion damping constant
 
 # Layer 2 of §1.7 abstains in code when the best reranked chunk scores below this.
-# PLACEHOLDER -- unvalidated. Pick the real value by sweeping it against the
-# false-abstention rate on the golden set (build order step 8), not by intuition.
-MIN_RERANK_SCORE = 0.40
+#
+# Measured on the 40-question golden set (eval/label_chunks.py, 2026-08-03):
+#   answerable (n=24)     min 0.769  median 0.863  max 0.926
+#   should-abstain (n=16) min 0.262  median 0.598  max 0.719
+# The classes separate cleanly, so this sits mid-band. Two caveats: the margin is
+# only 0.05, and it is fitted on the same set the eval reports against, so a 100%
+# gate score there is not evidence of generalisation. The tightest negatives are
+# cross-madhhab bait (max 0.719) -- of course, since the *topic* is in the book
+# and only the madhhab is not. Those are precisely the cases layers 1/3/4 exist
+# for; do not let a good number here talk you out of them.
+MIN_RERANK_SCORE = 0.74
 
 
 def load_env() -> None:
