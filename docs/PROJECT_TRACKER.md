@@ -1,7 +1,8 @@
 # AI-Fiqh — Project Tracker
 
-**Last updated:** 2026-08-03
-**Phase:** Implementation — retrieval working end-to-end, Q&A pipeline next
+**Last updated:** 2026-08-04
+**Phase:** Implementation — retrieval, Q&A pipeline, and eval harness all working
+end-to-end; revision mode starting
 
 ---
 
@@ -23,8 +24,12 @@
 | Golden eval set | Written ✅ — **40 questions, 8/category, all with reference answers** |
 | Golden set labelling | Done ✅ — `expected_chunk_ids`, `should_abstain`, `variant_group` |
 | `MIN_RERANK_SCORE` | Measured ✅ — **0.74**, gate 40/40 |
-| Eval harness (`eval/run_eval.py`) | Not started |
-| `retrieve.py` / `qa.py` / `revision.py` / `prompts.py` / `schemas.py` | Not started |
+| Eval harness (`eval/run_eval.py`) | Done ✅ — scored harness + `--sweep` gate-trade-off mode, zero model calls |
+| `prompts.py` / `qa.py` | Done ✅ — §2.1 linear pipeline, all four §1.7 abstention layers |
+| Eval run `20260804-103342` | Done ✅ — **40/40 behaviour, 24/24 ruling agreement, 0/24 false abstentions** — see *Eval results* below for caveats |
+| `notebooks/explore.ipynb` | Done ✅ — 26 cells / 8 sections, committed unexecuted (§1–3 verified run, §4–7 verified on an earlier execution) |
+| `retrieve.py` | Not started (`index.py`'s `Retriever` may already cover its role) |
+| `revision.py` / `schemas.py` | **In progress, uncommitted** — 426 + 103 lines on disk, distractor-selection design implemented, not yet reviewed or run |
 
 ### Ingestion results (2026-07-30)
 
@@ -79,6 +84,133 @@ inherited `0.8320`.
 
 ---
 
+## 2026-08-04 — Q&A pipeline, eval harness, notebook
+
+**Correction to the previous pass:** it recorded "nothing committed" for the
+labelling/gate-calibration work. That is stale. Two commits landed:
+
+- **`f4d6663`** "Label golden eval set and calibrate the abstention gate" —
+  the labelling work already documented above, plus the `MIN_RERANK_SCORE`
+  0.40 → 0.74 change, `.gitignore` credential patterns, and the SSH keypair
+  moved out of the repo root to `~/.ssh/`.
+- **`f751045`** "Add Q&A pipeline, eval harness, and exploration notebook" —
+  everything below.
+
+### New files
+
+- **`src/ai_fiqh/prompts.py`** — versioned system prompts,
+  `QA_PROMPT_VERSION = "qa-v1"`. Encodes §2.4's guardrail table. **Deliberate
+  omission worth recording:** it contains no self-verification instruction,
+  because Opus 5 already self-verifies and instructing it again produces
+  over-verification.
+- **`src/ai_fiqh/qa.py`** — the §2.1 linear pipeline, all four §1.7 layers:
+  (1) API-native citations on document blocks; (2) a confidence gate
+  abstaining in code before any model call; (3) the authority prompt; (4)
+  `verify_citations()`, flagging any page named in prose that no supplied
+  chunk covers. Plus §2.2 enumeration routing — a regex heuristic expands the
+  top hit to its whole section via `get_section`, merged rather than
+  substituted so §1.3 group expansion survives.
+- **`eval/run_eval.py`** — the scored harness, plus a `--sweep` mode that
+  plots the gate trade-off with zero model calls.
+- **`eval/results/20260804-103342.json`** — the run, stamped with prompt
+  version / model / effort / gate so runs stay comparable.
+- **`notebooks/explore.ipynb`** — 26 cells, 8 sections. Closes the
+  "notebooks/ empty" gap open since research.md §3.4.
+- **`.gitattributes`** — `nbstripout` filter rule.
+
+### Model and API decisions (research.md §1.6/§1.7 predate these)
+
+- Model is **`claude-opus-5`**, not what research.md assumed. `MAX_TOKENS =
+  16000`, `EFFORT = "high"`.
+- Thinking is **on by default** on Opus 5, and `max_tokens` caps thinking
+  *plus* answer text — hence the generous ceiling for short answers.
+- Refusal fallback (`fallbacks: "default"`, beta
+  `server-side-fallback-2026-07-01`) enabled by default, degrading
+  gracefully to the non-beta path if the beta isn't enabled on the key.
+- System prompt is prompt-cached (`cache_control` on the system block) —
+  byte-stable across questions, so it writes once and every later call reads
+  it.
+- **§1.7's citations/structured-outputs conflict is confirmed real**:
+  citations 400 alongside `output_config.format`. Q&A takes citations;
+  revision mode (§2.3) must take structured outputs instead. The eval judges
+  use structured outputs precisely because a grader needs no citations.
+
+### Eval results
+
+Behaviour 40/40 · ruling agreement 24/24 · abstention 16/16 · polarity 8/8 ·
+recall@context 24/24 · citation validity 40/40 · variant agreement 3/3 ·
+false abstentions 0/24. Latency median 10.8s, max 31.7s; 80s wall for all 40
+at 5 workers.
+
+**The caveats matter as much as the numbers:**
+
+1. **Ruling agreement (24/24) is the only genuinely new signal** — everything
+   prior measured behaviour, not correctness. It is judged against the
+   hand-written reference answers.
+2. **Judges were negative-controlled: 7/7 on planted failures.** This matters
+   because "the judge passed everything" is the most likely explanation for a
+   perfect score. The two discriminating cases both passed: a missing
+   enumeration item scores `incomplete` not `agrees`; a decline that still
+   cites the Hanafi position scores `declined` not `leaked`.
+3. **The 16/16 abstention figure is circular** — the gate was fitted on this
+   set, and all 16 fired at layer 2 without a model call. The independent
+   evidence is a **gate-disabled run (`gate=0.0`) where layer 3 alone held
+   16/16**, declining every comparative/out-of-scope question while still
+   giving the Hanafi ruling on the underlying topic. That gate-disabled
+   result, not the 16/16 headline number, is the meaningful one.
+4. **The golden set is now saturated.** 40/40 with zero failures means it
+   cannot detect a regression when `qa-v1` is edited, nor distinguish a
+   better config from a worse one. It has stopped being informative. Open
+   question below: it needs harder cases — questions the book answers
+   ambiguously or tersely, near-miss polarity pairs — with Hajj the obvious
+   gap given the known thin coverage.
+
+### Finding the notebook surfaced — `sawm-kaffarah` variant group
+
+The group **disagrees at top-1 retrieval**, though the harness scored
+variant agreement 3/3 (it compares verdicts, and all three answered
+correctly). Q20 retrieves
+`109-chapter-on-those-things-which-nullify-the-fast-...` while Q21/Q22 both
+retrieve `111-chapter-on-kaffarah-...`.
+
+The cause is not transliteration: Q21 vs Q22 is the real spelling pair
+(`kaffarah`/`kaffāra`) and those agree perfectly. Q20 **omits the Arabic term
+entirely** ("What is the penalty for intentionally breaking a fast?"), so
+BM25 has no lexical anchor and the nullifiers chapter wins. The group
+conflates a term-presence variant with spelling variants. Nothing is broken —
+all three retrieve the right chunk within top-5 and answer correctly — but
+the 3/3 overstates what was verified. Open item: either split Q20 into its
+own group, or define the metric on recall rather than top-1.
+
+### Tooling
+
+- `matplotlib` and `nbstripout` added to the `notebook` dependency group.
+- `nbstripout`: the filter **rule** ships in `.gitattributes`, but the filter
+  **binary** is configured per clone in `.git/config`. A fresh clone must run
+  `uv run nbstripout --install --attributes .gitattributes` or outputs
+  silently leak into diffs.
+- Chart palette validated with the dataviz checker (CVD ΔE 24.7 against a
+  ≥8 target) before use.
+
+### Revision mode — started, uncommitted
+
+`src/ai_fiqh/schemas.py` (103 lines) and `src/ai_fiqh/revision.py` (426
+lines) exist on disk, untracked. Design so far: Claude never picks the
+correct answer or invents distractors — it only phrases items this code
+already selected. Distractors are drawn from the book's own category
+structure (`(kitab, category)` vs. the *other* categories in the same
+`kitab`) or from polarity groups (§1.3), so a distractor is guaranteed wrong
+because the book itself files it elsewhere, not because a model judged it
+so. `schemas.py` splits **output** shapes (`MCQ`, `Flashcard`) from
+**generation** shapes (`PhrasedOptions`, `GeneratedFlashcard`) for the same
+reason — the model returns phrasings, not decisions. Uses
+`output_config.format`, so per the citations/structured-outputs conflict
+above it cannot carry API citations; provenance instead comes from the
+`chunk_id` each item was drawn from. Not yet reviewed or run — record
+progress here rather than treat it as done.
+
+---
+
 ## Environment
 
 - **Path:** `/Users/rifatmahammod/Developer/personal-projects/ai-fiqh`
@@ -86,13 +218,32 @@ inherited `0.8320`.
 - **Git:** work lands directly on `main`. Remote is
   `git@github.com:RifatM97/ai-fiqh.git`; local `main` has run ahead of
   `origin/main` before, so check `git status -sb` before assuming it is pushed.
+  **2026-08-04 push status, checked directly:** `git fetch origin` +
+  `git rev-list --left-right --count origin/main...main` reports `0 0` —
+  `origin/main` already carries `f751045`, i.e. all three recent commits
+  (`6838e0a`, `f4d6663`, `f751045`) are on the remote. `gh auth status` shows
+  `RifatM97` as the active account with `push: true` on the repo
+  (`gh api repos/RifatM97/ai-fiqh --jq .permissions` → admin/push/pull all
+  true). This **contradicts an earlier note** that push was blocked because
+  `gh` was authenticated as `rifat-mahammod_voda` (pull-only) and the loose
+  SSH key wasn't registered — that must have been resolved (account switch
+  and/or a push) between whenever that note was written and this check.
+  Nothing left to do here; recorded so a future stale-blocker note doesn't
+  recur.
 - **Credentials:** `.env` at repo root holds `ANTHROPIC_API_KEY` and
   `VOYAGE_API_KEY`. Gitignored, loaded via `python-dotenv`. An SSH keypair was
   found loose in the repo root on 2026-08-03 (never committed) and moved to
-  `~/.ssh/`; `.gitignore` now blocks `ssh-key*`, `*.pem`, `id_rsa*`, `id_ed25519*`.
+  `~/.ssh/`; `.gitignore` now blocks `ssh-key*`, `*.pem`, `id_rsa*`,
+  `id_ed25519*` (landed in `f4d6663`). Verified 2026-08-04: repo root is clean,
+  no `ssh-key*` present.
 - **Voyage billing:** payment method added 2026-08-03 — see *Throttling* below.
   Throttle constants raised the same day; cold rebuild now **8.3 seconds**
   (down from ~9 minutes).
+- **Anthropic credits:** exhausted mid-session on 2026-08-04, topped up same
+  day. This is why `notebooks/explore.ipynb` is committed with §1–3 verified
+  on the post-top-up run but §4–7 only verified on an earlier execution —
+  worth re-running end-to-end once touched again, since the two executions
+  aren't guaranteed to agree byte-for-byte.
 - **No poppler / `pdftoppm`** on this machine. PDF text extraction works via
   `uv run --with pymupdf python …`; anything needing page rasterisation will
   require `brew install poppler` first.
@@ -255,6 +406,26 @@ All nine are answered in [research.md §5](research.md). Summary:
    `expected_chunk_ids`, `should_abstain`, `variant_group` added to all 40
    questions via `eval/label_chunks.py` (propose) → `eval/apply_labels.py`
    (commit). See *Golden eval set* below.
+
+### Open questions added 2026-08-04
+
+1. **The golden set is saturated (40/40, zero failures) and can no longer
+   detect a regression or distinguish a better config from a worse one.**
+   Needs harder cases: questions the book answers ambiguously or tersely,
+   near-miss polarity pairs. Hajj is the obvious gap given known thin
+   coverage (2 of the 30 original xlsx questions, and revision-mode
+   distractor coverage there is already flagged thin — see *Known limitation
+   to revisit*).
+2. **`sawm-kaffarah` variant group (Q20–22) conflates two different things.**
+   Q21/Q22 are a genuine spelling-variant pair and agree at top-1; Q20 omits
+   the Arabic term entirely and retrieves a different (still correct within
+   top-5) chunk. The 3/3 variant-agreement metric doesn't distinguish these.
+   Either split Q20 into its own group or redefine the metric on recall
+   rather than top-1.
+3. **`retrieve.py` still not started** — unclear whether it's still needed
+   now that `qa.py` and `revision.py` both import `Retriever` from `index.py`
+   directly, or whether it was meant to be a thinner public wrapper. Decide
+   before or during revision-mode work rather than let it linger unaddressed.
 
 ---
 
@@ -424,36 +595,47 @@ loading. Line 3 now reads a single colon; the frontmatter parses.
 
 ## Next steps
 
-Full build order in [research.md §6](research.md). **Steps 1–8 are now done** —
-both credentials are in place, retrieval works, the `expand_groups()` trace
-bugs are fixed, the throttle constants are raised, and the golden set exists,
-is rebalanced, is labelled, and has a measured gate threshold. Remaining:
+Full build order in [research.md §6](research.md). **Steps 1–8 are now done,
+and confirmed committed and pushed** (see *Environment* — `origin/main` is in
+sync as of 2026-08-04): both credentials are in place, retrieval works, the
+`expand_groups()` trace bugs are fixed, the throttle constants are raised,
+the golden set exists, is rebalanced, is labelled, and has a measured gate
+threshold, the Q&A pipeline is built and passing eval (with the caveats
+above), and the exploration notebook exists. Remaining:
 
-1. `eval/run_eval.py` — a table, no framework (research.md §4). The pieces it
-   needs (labels, gate threshold, reference answers) are all in place now.
-2. Q&A pipeline (`qa.py`, `prompts.py`, `schemas.py`) with all four abstention
-   layers (research.md §1.7). First thing to actually exercise
-   `ANTHROPIC_API_KEY`.
-3. `retrieve.py` — thin wrapper `index.py`'s `Retriever` is presumably meant
-   to sit behind; not started.
-4. Revision mode (`revision.py`): MCQs + flashcards, with corpus-drawn
-   distractors (research.md §2.3).
-5. `notebooks/explore.ipynb` — the phase-1 interface. `SearchTrace.show()`
-   exists to be driven from here; nothing uses it yet.
-6. Streamlit UI.
+1. **Revision mode (§2.3) — starting now.** `revision.py` + `schemas.py`
+   exist on disk (see *Revision mode — started, uncommitted* above) but are
+   uncommitted and not yet reviewed or run. Next concretely: exercise the
+   distractor-selection logic against real chunks, run the four
+   post-generation validators mentioned in research.md §2.3, and get a first
+   MCQ/flashcard set out the other end.
+2. `retrieve.py` — still not started; open question above on whether it's
+   still needed now `qa.py`/`revision.py` both use `index.py`'s `Retriever`
+   directly.
+3. Streamlit UI — after revision mode.
 
 Also outstanding, unblocked, low cost:
 - **Merge the remaining 20 of the 30 xlsx content questions** into the JSON
   golden set (see *Golden eval set* above).
+- **Harden the golden set** — it's saturated (see *Open questions added
+  2026-08-04*); add harder/ambiguous/terse cases, prioritising Hajj.
+- **`sawm-kaffarah` variant group** — split Q20 out or redefine the metric on
+  recall (see *Open questions added 2026-08-04*).
 - Update the stale routing line in `.claude/CLAUDE.md` (still says
   "Automatically span between sub-agents depending on what the user asking" —
   flagged 2026-07-27, still not fixed).
 
-> **Commit state.** `6838e0a` (2026-08-03 14:37) captured `index.py` in full —
-> including the `expand_groups()` fixes and the raised throttle constants — plus
-> the golden set, the first tracker pass, and `python-dotenv`. What followed it
-> is the gate calibration (`MIN_RERANK_SCORE` 0.40 → 0.74), the labelling
-> scripts, the labelled golden set, and this tracker pass.
+> **Commit state, updated 2026-08-04.** `6838e0a` (2026-08-03 14:37) captured
+> `index.py` in full — including the `expand_groups()` fixes and the raised
+> throttle constants — plus the golden set, the first tracker pass, and
+> `python-dotenv`. `f4d6663` (2026-08-03 15:47) added the gate calibration
+> (`MIN_RERANK_SCORE` 0.40 → 0.74), the labelling scripts, the labelled
+> golden set, `.gitignore` credential patterns, and the SSH-key move.
+> `f751045` (2026-08-04 17:14) added the Q&A pipeline, eval harness, eval
+> run, and notebook — see the *2026-08-04* section above. All three are
+> confirmed present on `origin/main`. Uncommitted on disk right now:
+> `src/ai_fiqh/revision.py` and `src/ai_fiqh/schemas.py` (revision mode,
+> in progress).
 
 ### Known limitation to revisit
 
