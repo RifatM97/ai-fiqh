@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import random
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 from .index import Retriever, load_env
@@ -426,9 +426,22 @@ def generate_flashcards(
     retriever: Retriever | None = None,
     client: Any = None,
 ) -> tuple[list[Flashcard], list[ValidationFailure]]:
-    """Cards from one section. Deterministic lookup — no retrieval involved."""
+    """Cards from one whole section. Deterministic lookup — no retrieval."""
     r = retriever if retriever is not None else Retriever(verbose=False)
-    parts = r.get_section(chunk_id)
+    return cards_from_passage(r.get_section(chunk_id), n, client=client)
+
+
+def cards_from_passage(
+    parts: list[dict], n: int = 4, *, client: Any = None
+) -> tuple[list[Flashcard], list[ValidationFailure]]:
+    """Cards from one or more contiguous chunks.
+
+    The unit is a passage rather than a section because sections are wildly
+    uneven -- the Hajj rituals chapter runs to 22k characters while one Hajj
+    section is 267 -- and asking for four cards from a 22k passage produces four
+    cards about whichever part the model found most salient. Feeding it a chunk
+    at a time is what makes coverage even.
+    """
     text = "\n".join(p["text_raw"] for p in parts)
     head = parts[0]
 
@@ -462,6 +475,112 @@ def generate_flashcards(
                       kitab=head["kitab"], bab=head["bab"])
         )
     return cards, fails
+
+
+# --- decks: revision coverage for books the MCQ path cannot reach -------------
+
+MIN_PASSAGE_CHARS = 400  # below this a chunk is a heading fragment, not material
+CHARS_PER_CARD = 750
+MAX_CARDS_PER_PASSAGE = 5
+
+
+def plan_deck(
+    chunks: list[dict], kitab: str, *, exclude_babs: set[str] | None = None
+) -> list[tuple[list[dict], int]]:
+    """Decide which passages to card, and how many cards each earns.
+
+    Deliberately structural and category-free. Zakah has **zero** chunks the
+    ingest classifier assigned a legal category and Hajj has one, so the MCQ
+    path -- which needs a category to draw guaranteed-wrong distractors from --
+    cannot produce a single question for either book. Flashcards need no
+    distractor pool, so they are the only revision route those two have.
+
+    `exclude_babs` exists because length is a poor proxy for exam value. The
+    longest section in Hajj is "The Chapter of visiting The Prophet of Allah",
+    which produces perfectly faithful cards about salutation protocol -- how
+    many arm's lengths to move between graves, which duʿāʾ to recite -- and by
+    volume alone would be the largest part of the deck. Whether that belongs in
+    a revision set is the caller's judgement, not this function's, so nothing is
+    filtered by default and the report breaks cards down by section to make the
+    imbalance visible.
+    """
+    excluded = exclude_babs or set()
+    units: list[tuple[list[dict], int]] = []
+    for chunk in sorted(
+        (c for c in chunks if c["kitab"] == kitab),
+        key=lambda c: (c["page_start"], c["part"]),
+    ):
+        if len(chunk["text_raw"]) < MIN_PASSAGE_CHARS or chunk["bab"] in excluded:
+            continue
+        n = max(2, min(MAX_CARDS_PER_PASSAGE, len(chunk["text_raw"]) // CHARS_PER_CARD))
+        units.append(([chunk], n))
+    return units
+
+
+def build_deck(
+    kitab: str,
+    *,
+    retriever: Retriever | None = None,
+    client: Any = None,
+    workers: int = 4,
+    exclude_babs: set[str] | None = None,
+) -> tuple[list[Flashcard], list[ValidationFailure], dict[str, Any]]:
+    """Every passage of a book, carded, deduplicated, with a coverage report."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    r = retriever if retriever is not None else Retriever(verbose=False)
+    units = plan_deck(r.chunks, kitab, exclude_babs=exclude_babs)
+    if not units:
+        return [], [ValidationFailure(check="empty_kitab", detail=kitab)], {}
+    client = _client(client)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(
+            lambda u: cards_from_passage(u[0], u[1], client=client), units
+        ))
+
+    cards: list[Flashcard] = []
+    fails: list[ValidationFailure] = []
+    seen: set[str] = set()
+    carded_pages: set[int] = set()
+    for (parts, _), (got, f) in zip(units, results):
+        fails.extend(f)
+        kept = 0
+        for card in got:
+            key = fold(card.front)
+            if key in seen:
+                fails.append(ValidationFailure(
+                    check="duplicate_front", detail=card.front))
+                continue
+            seen.add(key)
+            cards.append(card)
+            kept += 1
+        if kept:
+            # Credit the passage's whole page range, not the card's `source_page`
+            # -- that field collapses a multi-page chunk to its first page, which
+            # made coverage read as 6/9 on a book where every page was carded.
+            carded_pages.update(
+                p for part in parts
+                for p in range(part["page_start"], part["page_end"] + 1)
+            )
+
+    kitab_pages = {
+        p for c in r.chunks if c["kitab"] == kitab
+        for p in range(c["page_start"], c["page_end"] + 1)
+    }
+    by_section = Counter(c.bab for c in cards)
+    report = {
+        "kitab": kitab,
+        "passages": len(units),
+        "cards": len(cards),
+        "discarded": len(fails),
+        "pages_total": len(kitab_pages),
+        "pages_covered": len(carded_pages & kitab_pages),
+        # Ordered by size so a section dominating the deck is the first thing
+        # visible -- see the note in `plan_deck` about exam value vs length.
+        "by_section": dict(by_section.most_common()),
+    }
+    return cards, fails, report
 
 
 def main() -> None:
