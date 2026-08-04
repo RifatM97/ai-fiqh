@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-notebook = ["jupyter", "ipykernel"]
+notebook = ["jupyter", "ipykernel", "matplotlib", "nbstripout"]
 
 [build-system]
 requires = ["hatchling"]
