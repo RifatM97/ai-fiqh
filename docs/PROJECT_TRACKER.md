@@ -28,8 +28,9 @@ end-to-end; revision mode starting
 | `prompts.py` / `qa.py` | Done ✅ — §2.1 linear pipeline, all four §1.7 abstention layers |
 | Eval run `20260804-103342` | Done ✅ — **40/40 behaviour, 24/24 ruling agreement, 0/24 false abstentions** — see *Eval results* below for caveats |
 | `notebooks/explore.ipynb` | Done ✅ — 26 cells / 8 sections, committed unexecuted (§1–3 verified run, §4–7 verified on an earlier execution) |
-| `retrieve.py` | Not started (`index.py`'s `Retriever` may already cover its role) |
-| `revision.py` / `schemas.py` | **In progress, uncommitted** — 426 + 103 lines on disk, distractor-selection design implemented, not yet reviewed or run |
+| `retrieve.py` | **Dropped ✅** — never needed; §2.2's primitives are `Retriever.search` / `Retriever.get_section` |
+| `revision.py` / `schemas.py` | Done ✅ — MCQs with corpus-drawn distractors, flashcards, `build_deck` for Zakah/Hajj |
+| `app.py` — Streamlit UI (§2.1) | Not started — the last item in the build order |
 
 ### Ingestion results (2026-07-30)
 
@@ -422,10 +423,12 @@ All nine are answered in [research.md §5](research.md). Summary:
    top-5) chunk. The 3/3 variant-agreement metric doesn't distinguish these.
    Either split Q20 into its own group or redefine the metric on recall
    rather than top-1.
-3. **`retrieve.py` still not started** — unclear whether it's still needed
-   now that `qa.py` and `revision.py` both import `Retriever` from `index.py`
-   directly, or whether it was meant to be a thinner public wrapper. Decide
-   before or during revision-mode work rather than let it linger unaddressed.
+3. ~~**`retrieve.py` still not started**~~ — **resolved 2026-08-04: dropped, not
+   deferred.** Its two planned functions already exist as `Retriever.search`
+   (§2.2's `search_fiqh`) and `Retriever.get_section`, both in `index.py`, and
+   both are used directly by `qa.py` and `revision.py`. A wrapper module would
+   add a layer without adding behaviour. Removed from research.md §3.4; the
+   design in §2.2 stands unchanged, only its file layout did.
 
 ---
 
@@ -603,16 +606,18 @@ the golden set exists, is rebalanced, is labelled, and has a measured gate
 threshold, the Q&A pipeline is built and passing eval (with the caveats
 above), and the exploration notebook exists. Remaining:
 
-1. **Revision mode (§2.3) — starting now.** `revision.py` + `schemas.py`
-   exist on disk (see *Revision mode — started, uncommitted* above) but are
-   uncommitted and not yet reviewed or run. Next concretely: exercise the
-   distractor-selection logic against real chunks, run the four
-   post-generation validators mentioned in research.md §2.3, and get a first
-   MCQ/flashcard set out the other end.
-2. `retrieve.py` — still not started; open question above on whether it's
-   still needed now `qa.py`/`revision.py` both use `index.py`'s `Retriever`
-   directly.
-3. Streamlit UI — after revision mode.
+1. ~~**Revision mode (§2.3)**~~ — **done 2026-08-04**, committed as `b4c59f2`
+   plus the deck builder. MCQs with corpus-drawn distractors, flashcards, and
+   `build_deck` giving Zakah and Hajj the coverage the MCQ path structurally
+   cannot. See *Revision mode* below.
+2. ~~`retrieve.py`~~ — **dropped**, see resolved open question 3 above.
+3. **Streamlit UI (`app.py`, §2.1) — the last build-order item.** Mostly
+   wiring: `qa.answer()`, `revision.generate_mcqs()`, and
+   `revision.build_deck()` are the three entry points, and §2.1 specifies mode
+   is user-selected rather than routed, so it is two tabs and no orchestration
+   layer. **One prerequisite:** bab titles carry unmappable Private Use Area
+   glyphs (the Hajj visiting chapter ends in ``, the unrendered ﷺ), so a
+   section picker needs a display-name helper before it renders anything.
 
 Also outstanding, unblocked, low cost:
 - **Merge the remaining 20 of the 30 xlsx content questions** into the JSON

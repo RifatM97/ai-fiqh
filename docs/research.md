@@ -253,6 +253,8 @@ Resist the pull to make this agentic because "advanced RAG" sounds like it shoul
 
 Both modes draw on the same index through two functions. Note that only one of them involves embeddings at all.
 
+> **Superseded 2026-08-04 — these are methods on `Retriever`, not a `retrieve.py`.** The primitives below are real and both exist; the separate module they were planned to live in does not, and will not. `Retriever.search()` is `search_fiqh` and `Retriever.get_section()` is `get_section`, both in `index.py`. Splitting them into a wrapper module would add a layer without adding behaviour, since neither does anything the index doesn't already own. The design in this section stands; only its file layout changed.
+
 **`search_fiqh(query, *, kitab=None, category=None) -> list[Chunk]`**
 Hybrid search + rerank + pair expansion, per §1.5. Probabilistic. Used by Q&A.
 
@@ -422,21 +424,29 @@ ai-fiqh/
 ├── src/ai_fiqh/
 │   ├── ingest.py        # §3.3 — one-time                    ✅ done
 │   ├── normalize.py     # §1.4 folding, junk filter, aliases ✅ done
-│   ├── index.py         # hybrid search, RRF, group expansion
-│   ├── retrieve.py      # search_fiqh / get_section (§2.2)
-│   ├── qa.py            # Q&A pipeline (§2.1)
-│   ├── revision.py      # MCQ + flashcard generation (§2.3)
-│   ├── schemas.py       # pydantic models
-│   └── prompts.py       # system prompts, versioned
+│   ├── index.py         # hybrid search, RRF, group expansion  ✅ done
+│   │                    #   — also owns §2.2's two primitives:
+│   │                    #     Retriever.search / Retriever.get_section
+│   ├── qa.py            # Q&A pipeline (§2.1)                  ✅ done
+│   ├── revision.py      # MCQ + flashcard generation (§2.3)    ✅ done
+│   ├── schemas.py       # pydantic models                      ✅ done
+│   └── prompts.py       # system prompts, versioned            ✅ done
 ├── notebooks/
-│   └── explore.ipynb    # primary interface, phase 1
+│   └── explore.ipynb    # inspection lens, phase 1             ✅ done
 ├── eval/
-│   ├── golden.json      # §4
-│   └── run_eval.py
+│   ├── golden-eval-set.json   # §4                             ✅ 40 questions
+│   ├── label_chunks.py        # proposes expected_chunk_ids
+│   ├── apply_labels.py        # commits reviewed labels
+│   └── run_eval.py            # scored harness                 ✅ done
 └── index/               # generated, gitignored
     ├── chunks.json      # ✅ 177 chunks
-    └── embeddings.npy   # pending Voyage key
+    └── embeddings.npy   # ✅ 177 × 1024, voyage-4-large
 ```
+
+> **`retrieve.py` was dropped, 2026-08-04.** See the note in §2.2 — its two
+> functions are methods on `Retriever`, and a module wrapping them would add a
+> layer without adding behaviour. `app.py` (Streamlit, §2.1) is the one file in
+> this layout still to be written.
 
 Keep prompts in `prompts.py` as module-level constants rather than inline strings. You will iterate on the abstention prompt more than any other code in this project, and having it in one place makes the eval loop tractable.
 
