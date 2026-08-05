@@ -1,8 +1,9 @@
 # AI-Fiqh — Project Tracker
 
-**Last updated:** 2026-08-04
-**Phase:** Implementation — retrieval, Q&A pipeline, and eval harness all working
-end-to-end; revision mode starting
+**Last updated:** 2026-08-05
+**Phase:** Build order complete — all ten steps of research.md §6 are done,
+including the Streamlit UI. Remaining work is quality/hardening, not new
+components; see *Still open* and *Next steps* below.
 
 ---
 
@@ -30,7 +31,7 @@ end-to-end; revision mode starting
 | `notebooks/explore.ipynb` | Done ✅ — 26 cells / 8 sections, committed unexecuted (§1–3 verified run, §4–7 verified on an earlier execution) |
 | `retrieve.py` | **Dropped ✅** — never needed; §2.2's primitives are `Retriever.search` / `Retriever.get_section` |
 | `revision.py` / `schemas.py` | Done ✅ — MCQs with corpus-drawn distractors, flashcards, `build_deck` for Zakah/Hajj |
-| `app.py` — Streamlit UI (§2.1) | Not started — the last item in the build order |
+| `app.py` — Streamlit UI (§2.1) | Done ✅ — **build order complete**, verified end-to-end via `AppTest`, uncommitted |
 
 ### Ingestion results (2026-07-30)
 
@@ -195,6 +196,11 @@ own group, or define the metric on recall rather than top-1.
 
 ### Revision mode — started, uncommitted
 
+> **Stale as of 2026-08-05:** this subsection describes the state on
+> 2026-08-04. Both files below are now committed (`b4c59f2`, `c949e87`) and
+> exercised — see *2026-08-05* above and *Status at a glance*. Left as-is for
+> the historical design record.
+
 `src/ai_fiqh/schemas.py` (103 lines) and `src/ai_fiqh/revision.py` (426
 lines) exist on disk, untracked. Design so far: Claude never picks the
 correct answer or invents distractors — it only phrases items this code
@@ -209,6 +215,154 @@ reason — the model returns phrasings, not decisions. Uses
 above it cannot carry API citations; provenance instead comes from the
 `chunk_id` each item was drawn from. Not yet reviewed or run — record
 progress here rather than treat it as done.
+
+---
+
+## 2026-08-05 — Streamlit UI: the build order is complete
+
+**Headline: all ten steps of research.md §6 are now done.** The Streamlit UI
+(§2.1) was the last of them. Everything after this point is quality work
+against what already exists, not new components — see *Still open* below.
+
+### Commits since the last pass
+
+Three, all now on `main`:
+
+| Commit | Summary |
+|---|---|
+| `b4c59f2` | Add revision mode: MCQs with corpus-drawn distractors, and flashcards |
+| `c949e87` | Add flashcard decks so Zakah and Hajj have revision coverage |
+| `5849ff9` | Drop retrieve.py from the design; record why rather than deleting it |
+
+**Push status, checked directly this pass:** `git fetch origin` succeeded and
+`git rev-list --left-right --count origin/main...main` reports `0 0` —
+`origin/main` is at `5849ff9`, matching local `main` exactly. All three
+commits above are confirmed on the remote. Note for the record: an earlier
+check in this pass had `git fetch` fail with "Could not resolve host:
+github.com" (no network at that moment), so the push state was treated as
+unverified until the retry above succeeded — worth re-checking again next
+time rather than assuming either state holds.
+
+**Still uncommitted on disk:** `src/ai_fiqh/app.py` (new) and
+`src/ai_fiqh/normalize.py` (modified — adds `display_title()`), plus the
+`pyproject.toml` / `uv.lock` changes that add the `ui` dependency group.
+
+### New: `src/ai_fiqh/app.py` — the Streamlit UI (uncommitted)
+
+Three tabs: **Ask**, **Practice questions**, **Flashcards**. Per §2.1 the tab
+*is* the mode — no router, no classifier, no agent loop. The file
+deliberately contains no retrieval logic, no prompts and no validation; it
+calls `qa.answer`, `revision.generate_mcqs`, `revision.generate_flashcards`,
+and its real job is surfacing what a user must not miss.
+
+Design points worth recording:
+
+- `get_retriever()` / `get_client()` are `@st.cache_resource`, so embeddings
+  load once per server rather than per interaction.
+- **Abstention renders as `st.info`, not an error**, with a "Why it
+  abstained" expander showing the gate score and whether a model call was
+  made. Abstaining is a correct outcome and must not look like a failed
+  request.
+- **Layer 4 renders as `st.error`** — if a page is named that was not in
+  context, the answer is marked unreliable.
+- `mcq_targets()` probes which `(kitab, category)` pairs can actually build a
+  distractor pool, so **the MCQ Book dropdown offers 3 books while
+  Flashcards offers 5**. Zakah and Hajj never appear as buttons that cannot
+  work.
+- A "Retrieval trace" expander shows the final ranking with `← group
+  expansion` marking chunks that only reached the model because §1.3 pulled
+  in their polarity sibling.
+- `ui = ["streamlit"]` added to the `pyproject.toml` dependency groups
+  (research.md §3.1 had planned this) — confirmed present in the diff.
+
+### Verified end-to-end via Streamlit's `AppTest` harness
+
+Not just "it parses" — the script was executed and driven:
+
+| Flow | Result |
+|---|---|
+| Q&A, covered question | 4 citations, pages 13–19, enumeration routing fired |
+| Q&A, out-of-scope | Abstained at layer 2 — gate 0.74 vs best match 0.379, no model call |
+| Practice questions | 2 stems, 4 options each, answerable |
+| Flashcards | 4–5 cards with page provenance (2 clean runs) |
+| 529 overload | Warning shown, no traceback |
+
+### Bug found by testing: unhandled API errors
+
+A real `529 Overloaded` from the API surfaced as a **raw Python traceback in
+the UI**. Fixed with a `guarded()` wrapper handling rate limits, 529
+overloads, out-of-credit 400s, and connection errors, returning `None` so
+previous output is left alone; `max_retries` raised from the default 2 to 5
+(`anthropic.Anthropic(max_retries=5)`). Verified both by injecting a
+synthetic 529 and by two genuine overloads that occurred during testing.
+
+### New: `display_title()` in `normalize.py` (uncommitted)
+
+Strips only Private Use Area and control codepoints, for rendering section
+titles in dropdowns. The Hajj chapter on visiting the Prophet ends in ``,
+the PDF's unmapped ﷺ. Applied only at the display boundary — the raw title
+stays the key, because `get_section` matches on it exactly.
+
+### Important: measured defect in `is_junk_char` — documented, deliberately NOT fixed
+
+This is a latent correctness issue in a core module; the reasoning is
+recorded here so it isn't lost, and it's now also written into the
+function's docstring in code.
+
+**The defect.** `is_junk_char` treats any codepoint ≥ `0x250` outside a small
+allow-list as junk. That cutoff predates needing Latin Extended Additional
+(`U+1E00–U+1EFF`), which is exactly where this transliteration's dot-below
+letters live — `ṣ ḍ ḥ ṭ ẓ` are all reported as junk, while the macron
+letters `ā ī ū` sit below the cutoff and pass. The function is therefore
+inconsistent about the very scheme the corpus is written in.
+
+**Why it has not broken anything.** Every caller applies a *ratio* threshold
+rather than filtering per character, so a few diacritics in normal-length
+text dilute below it. That is luck, not design.
+
+**Measured cost across the whole corpus** (measured, not reasoned — an
+earlier claim that ingestion lost nothing was wrong and was corrected):
+
+- `strip_junk_lines` at 0.30 drops **72 lines, 71 of them genuine mojibake**.
+  The exception is p109's `'q̣aḍā’'` at ratio 0.33 — the wrapped second half
+  of the heading "Chapter on those things which nullify the fast and
+  necessitate kaffārah with / qaḍāʾ". Harmless: the heading still matched on
+  its first line, the full title survives in the chunk's `bab`, and the
+  phrase recurs in the body two lines later. Had the diacritics counted as
+  legitimate it would have scored 0.17 and survived.
+- Revision's tighter 0.08 ceiling rejects exactly **2 items, both genuinely
+  unmappable Arabic**.
+
+**Where it did bite:** the first version of `display_title` reused
+`is_junk_char` and turned "The Book of Ṣalāh" into "The Book of alāh" across
+44 titles. That is what prompted the investigation.
+
+**Why not fixed:** correcting the range changes chunk text → forces a
+re-ingest → invalidates `index/embeddings.npy` → potentially invalidates the
+golden set's `expected_chunk_ids` and with them the 40/40 eval. A wide blast
+radius to recover one heading fragment that cost nothing. The defect and its
+measured cost are now written into the function's docstring along with this
+reasoning. **Log as an open item: if the corpus is ever re-ingested for
+another reason, fixing the `0x250` boundary should ride along with that
+change.**
+
+### Still open (carry forward, do not mark done)
+
+1. **Golden set is saturated** at 40/40 — cannot detect a regression in
+   `qa-v1`. Needs harder/ambiguous/terse cases, Hajj prioritised.
+2. **Merge the remaining 20 of the 30 xlsx content questions** into the JSON
+   golden set.
+3. **`sawm-kaffarah` variant group** conflates a term-presence variant (Q20)
+   with spelling variants (Q21/Q22); the 3/3 metric overstates what was
+   verified.
+4. **`ingest.py` classifier over-assigns `fard` in salah** — matches
+   `\bfard\b` in titles like "Joining the farḍ prayer". Harmless today (empty
+   item pool, correctly skipped) but a source-level bug.
+5. **Context-dependent MCQ options** — items whose qualifying condition lives
+   in the chapter heading read ambiguously once lifted out ("Partaking the
+   pre-dawn meal").
+6. **The `is_junk_char` range fix above** — deliberately not fixed; ride
+   along with any future re-ingest.
 
 ---
 
@@ -231,6 +385,16 @@ progress here rather than treat it as done.
   and/or a push) between whenever that note was written and this check.
   Nothing left to do here; recorded so a future stale-blocker note doesn't
   recur.
+  **2026-08-05 push status:** three more commits landed (`b4c59f2`,
+  `c949e87`, `5849ff9`). A `git fetch` attempted mid-pass failed with "Could
+  not resolve host: github.com" (no network at that moment) — recorded as a
+  reminder that push state should be *re-checked*, not trusted from a stale
+  note. A retry of `git fetch origin` later in the same pass succeeded, and
+  `git rev-list --left-right --count origin/main...main` reported `0 0` —
+  `origin/main` is at `5849ff9`, i.e. all three commits above are confirmed
+  on the remote as of this check. What is **not** pushed: `app.py`
+  (untracked) and the `normalize.py` / `pyproject.toml` / `uv.lock` changes
+  underneath it — all still uncommitted on disk, see *2026-08-05* above.
 - **Credentials:** `.env` at repo root holds `ANTHROPIC_API_KEY` and
   `VOYAGE_API_KEY`. Gitignored, loaded via `python-dotenv`. An SSH keypair was
   found loose in the repo root on 2026-08-03 (never committed) and moved to
@@ -598,39 +762,57 @@ loading. Line 3 now reads a single colon; the frontmatter parses.
 
 ## Next steps
 
-Full build order in [research.md §6](research.md). **Steps 1–8 are now done,
-and confirmed committed and pushed** (see *Environment* — `origin/main` is in
-sync as of 2026-08-04): both credentials are in place, retrieval works, the
+**The build order in [research.md §6](research.md) is complete — all ten
+steps done.** Both credentials are in place, retrieval works, the
 `expand_groups()` trace bugs are fixed, the throttle constants are raised,
 the golden set exists, is rebalanced, is labelled, and has a measured gate
 threshold, the Q&A pipeline is built and passing eval (with the caveats
-above), and the exploration notebook exists. Remaining:
+above), the exploration notebook exists, revision mode is built, and the
+Streamlit UI (§2.1) is built and verified end-to-end via `AppTest`. Nothing
+in the original design remains unbuilt.
 
 1. ~~**Revision mode (§2.3)**~~ — **done 2026-08-04**, committed as `b4c59f2`
    plus the deck builder. MCQs with corpus-drawn distractors, flashcards, and
    `build_deck` giving Zakah and Hajj the coverage the MCQ path structurally
-   cannot. See *Revision mode* below.
-2. ~~`retrieve.py`~~ — **dropped**, see resolved open question 3 above.
-3. **Streamlit UI (`app.py`, §2.1) — the last build-order item.** Mostly
-   wiring: `qa.answer()`, `revision.generate_mcqs()`, and
-   `revision.build_deck()` are the three entry points, and §2.1 specifies mode
-   is user-selected rather than routed, so it is two tabs and no orchestration
-   layer. **One prerequisite:** bab titles carry unmappable Private Use Area
-   glyphs (the Hajj visiting chapter ends in ``, the unrendered ﷺ), so a
-   section picker needs a display-name helper before it renders anything.
+   cannot. See *Revision mode* above.
+2. ~~`retrieve.py`~~ — **dropped**, committed as `5849ff9`. See resolved open
+   question 3 above.
+3. ~~**Streamlit UI (`app.py`, §2.1)**~~ — **done 2026-08-05, uncommitted.**
+   Three tabs (Ask / Practice questions / Flashcards), verified via `AppTest`
+   against real API calls including an abstention path and a 529 error path.
+   The prerequisite noted here previously — bab titles carry an unmappable
+   Private Use Area glyph (the Hajj visiting chapter ends in the unrendered
+   SAW glyph) — is now handled: the new `display_title()` helper in
+   `normalize.py` strips only Private Use Area / control codepoints at the
+   display boundary, leaving
+   `get_section`'s exact-match key untouched. See *2026-08-05* above for
+   design points and the bug found by testing. **Still to do:** commit it,
+   along with `normalize.py` and the `pyproject.toml` `ui` dependency group
+   it depends on.
 
-Also outstanding, unblocked, low cost:
+What remains is quality work against what already exists, not new
+components:
+
+- **Commit and push the uncommitted UI work** — `app.py`, `normalize.py`
+  (`display_title`), `pyproject.toml` / `uv.lock` (`ui` dependency group).
+  Currently only on disk.
 - **Merge the remaining 20 of the 30 xlsx content questions** into the JSON
   golden set (see *Golden eval set* above).
 - **Harden the golden set** — it's saturated (see *Open questions added
   2026-08-04*); add harder/ambiguous/terse cases, prioritising Hajj.
 - **`sawm-kaffarah` variant group** — split Q20 out or redefine the metric on
   recall (see *Open questions added 2026-08-04*).
+- **`ingest.py`'s `fard`-in-salah over-match** — source-level classifier bug,
+  currently harmless (see *Still open*, 2026-08-05 above).
+- **Context-dependent MCQ options** whose qualifying condition lives in the
+  chapter heading (see *Still open*, 2026-08-05 above).
+- **`is_junk_char`'s `0x250` boundary** — documented defect, deliberately
+  deferred to the next re-ingest (see *2026-08-05* above).
 - Update the stale routing line in `.claude/CLAUDE.md` (still says
   "Automatically span between sub-agents depending on what the user asking" —
   flagged 2026-07-27, still not fixed).
 
-> **Commit state, updated 2026-08-04.** `6838e0a` (2026-08-03 14:37) captured
+> **Commit state, updated 2026-08-05.** `6838e0a` (2026-08-03 14:37) captured
 > `index.py` in full — including the `expand_groups()` fixes and the raised
 > throttle constants — plus the golden set, the first tracker pass, and
 > `python-dotenv`. `f4d6663` (2026-08-03 15:47) added the gate calibration
@@ -638,9 +820,18 @@ Also outstanding, unblocked, low cost:
 > golden set, `.gitignore` credential patterns, and the SSH-key move.
 > `f751045` (2026-08-04 17:14) added the Q&A pipeline, eval harness, eval
 > run, and notebook — see the *2026-08-04* section above. All three are
-> confirmed present on `origin/main`. Uncommitted on disk right now:
-> `src/ai_fiqh/revision.py` and `src/ai_fiqh/schemas.py` (revision mode,
-> in progress).
+> confirmed present on `origin/main`. **Updated 2026-08-05:** three more
+> commits landed — `b4c59f2` "Add revision mode: MCQs with corpus-drawn
+> distractors, and flashcards", `c949e87` "Add flashcard decks so Zakah and
+> Hajj have revision coverage", `5849ff9` "Drop retrieve.py from the design;
+> record why rather than deleting it". Re-verified directly this pass (after
+> an earlier `git fetch` in the same pass failed on a network error):
+> `origin/main` is at `5849ff9`, matching local `main` — all six commits to
+> date are confirmed on the remote. Uncommitted on disk right now:
+> `src/ai_fiqh/app.py` (new — the Streamlit UI) and `src/ai_fiqh/normalize.py`
+> (modified — adds `display_title()`), plus the `pyproject.toml` / `uv.lock`
+> changes that add the `ui` dependency group. `revision.py` / `schemas.py`,
+> previously in progress, are now committed as part of `b4c59f2` / `c949e87`.
 
 ### Known limitation to revisit
 

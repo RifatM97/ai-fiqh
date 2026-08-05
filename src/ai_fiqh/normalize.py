@@ -41,7 +41,35 @@ def fold(s: str, *, drop_digits: bool = False) -> str:
 
 
 def is_junk_char(c: str) -> bool:
-    """True for characters that are unmappable font garbage, not real content."""
+    """True for characters that are unmappable font garbage, not real content.
+
+    **Known defect, measured rather than assumed.** The 0x250 cutoff predates
+    needing Latin Extended Additional (U+1E00-U+1EFF), which is where the
+    dot-below letters this transliteration relies on live -- ``ṣ``, ``ḍ``,
+    ``ḥ``, ``ṭ``, ``ẓ``. All are reported as junk. The macron letters ``ā``,
+    ``ī``, ``ū`` sit below the cutoff and pass, so the function is inconsistent
+    about the very scheme the corpus is written in.
+
+    It survives because every caller applies a *ratio* threshold, and a few
+    diacritics in normal-length text dilute below it. Measured cost across the
+    whole corpus:
+
+    * ``strip_junk_lines`` at 0.30 drops 72 lines, 71 of them genuine mojibake.
+      The exception is p109's ``'q̣aḍā’'`` (ratio 0.33) -- the wrapped second
+      half of a chapter heading. Harmless in the end: the heading still matched
+      on its first line, the full title survives in the chunk's ``bab``, and the
+      phrase recurs in the body text.
+    * revision's 0.08 ceiling rejects exactly 2 items, both genuinely
+      unmappable Arabic.
+
+    Not fixed deliberately: correcting the range would change chunk text, which
+    forces a re-ingest, which invalidates the embeddings and the golden set's
+    ``expected_chunk_ids`` -- a wide blast radius to recover one heading
+    fragment. Revisit if the corpus is ever re-ingested for another reason.
+
+    Do not use this per-character to filter text for display -- it will eat
+    ``Ṣalāh``. Use `display_title` for that.
+    """
     if c.isspace() or c in _LEGIT_HIGH:
         return False
     o = ord(c)
@@ -67,6 +95,37 @@ def strip_junk_lines(lines: list[str], threshold: float = 0.30) -> list[str]:
     sufficient and avoids mangling legitimate transliteration.
     """
     return [ln for ln in lines if junk_ratio(ln) < threshold]
+
+
+# Codepoints with no glyph in any normal font: the Private Use Area (where this
+# PDF's ﷺ landed) and the C0/C1 control blocks. Deliberately *not* `is_junk_char`
+# -- that one also flags ṣ, ḍ and ḥ, which is safe behind a ratio threshold and
+# ruinous per character. See its docstring.
+_UNRENDERABLE = re.compile(
+    "["
+    "\\ue000-\\uf8ff"    # Private Use Area — this PDF's unmapped SAW glyph lives here
+    "\\u0000-\\u0008"    # C0 controls, keeping \\t and \\n
+    "\\u000b-\\u001f"
+    "\\u007f-\\u009f"    # DEL and C1 controls
+    "\\ufff0-\\uffff"    # specials, incl. the replacement character
+    "]"
+)
+
+
+def display_title(s: str) -> str:
+    """A section title fit to put in front of a person.
+
+    Chunk metadata carries the book's headings verbatim, and one of them ends in
+    an unmappable glyph -- the Hajj chapter on visiting the Prophet ends in the
+    Private Use Area codepoint that should have been ﷺ. Fine as an internal key,
+    since every comparison sees the same bytes, but it renders as a blank box in
+    a dropdown. Stripped only at the display boundary; never upstream, where the
+    raw title is what `get_section` matches on.
+
+    Transliteration is left completely alone -- ``The Book of Ṣalāh`` comes back
+    unchanged, which is the whole reason this does not reuse `is_junk_char`.
+    """
+    return _WS.sub(" ", _UNRENDERABLE.sub("", s)).strip()
 
 
 # --- Arabic-term alias layer -------------------------------------------------
