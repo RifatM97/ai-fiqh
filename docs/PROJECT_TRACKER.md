@@ -596,6 +596,89 @@ All nine are answered in [research.md §5](research.md). Summary:
 
 ---
 
+## Category coverage for Zakah and Hajj — drafted 2026-08-07, **awaiting review**
+
+**Where it stands:** `docs/category-overrides.draft.json` exists, is annotated,
+and is **not wired into anything**. Nothing was committed. It needs a human with
+fiqh knowledge to check it before any of it is applied.
+
+### The problem
+
+Practice questions (MCQs) draw distractors from the legal category the book
+files a ruling under, so a distractor is guaranteed wrong. Zakah has **zero**
+category-labelled chunks and Hajj has **one**, so the UI hides both books from
+the MCQ tab. Flashcards cover them instead, but that is a workaround, not a fix.
+
+### What the investigation actually found — the first fix was wrong
+
+The obvious approach, a per-chunk `CATEGORY_OVERRIDES` map keyed by chunk id,
+**does not work and would be actively harmful.** Chunk
+`132-the-book-of-hajj-p1` contains *both* "The wājibāt of Hajj" and "The sunan
+of Hajj": labelling it `wajib` would file the sunan items as wājib, and a
+distractor drawn from that pool would be secretly correct. That is precisely the
+failure §2.3's whole design exists to make impossible.
+
+The real cause is upstream. Hajj and Zakah **do** have proper category headings
+in the body — "The wājibāt of Hajj" (p134), "The sunan of Hajj" (p135),
+"Conditions for Hajj to become compulsory" (p132) and so on. The printed ToC
+simply does not list them, and `ingest.py` uses ToC entries as its only
+segmentation anchors, so those headings never became chunk boundaries and
+everything below them landed as `general`.
+
+**So the fix is an `EXTRA_HEADINGS` list in `ingest.py`** — headings to treat as
+segmentation anchors alongside the ToC — not a category map. The draft is
+therefore a table of *headings*, not chunk ids.
+
+### The draft
+
+33 candidate headings found book-wide (not just Hajj — taharah and salah gain
+several too). 29 to review, 4 proposed for dropping. Each row carries `page`,
+`kitab`, `heading` verbatim, `auto_category` (what `classify_category` returns
+today), `proposed_category`, `confidence`, and a `note`.
+
+`items_following` is **approximate and marked as such** — the counter runs past
+section ends, reporting ~31 for a list of 18.
+
+### Two real bugs in `ingest.py` this surfaced
+
+Neither causes harm *today*, because the affected chunks are `general` and
+nothing draws from them. **Both become live the moment this table is applied**,
+so fix them in the same pass.
+
+1. **`mustaḥab` is classified as `makruh`.** `_CATEGORY_RULES` puts
+   `\bmakruh|\bdisliked\b|\bmustahab` in one rule mapping to `"makruh"`. Those
+   are opposites. Hits "Mustaḥab prayer times" (p32) and "Things which are
+   mustaḥab for a fasting person" (p116). If either fed a distractor pool, the
+   MCQ would offer a *recommended* act as the *disliked* answer — a
+   confidently-taught error of exactly the kind §2.3 is built to prevent.
+   **Highest-risk item in this whole table.**
+2. **"Conditions that necessitate its fulfilment" is classified as
+   `nullifier`**, because the rule matches `\bnecessitate`. Hits p102 (sawm) and
+   p133 (hajj); both are condition lists, i.e. `shurut`.
+
+### Three judgement calls left for the reviewer
+
+1. **The four "drop" rows** — "It is mustaḥab" (a prose fragment), "Fulfilment
+   of a vow prior to its condition", "The sunnah shroud for a male consists of",
+   "When is it sunnah to do Rafʿ al-Yadain?". Read as lists of garments or
+   occasions rather than rulings of one category. Confirm or reinstate.
+2. **`Arkān of ṣalāh` (p37)** — currently `general`; a new `arkan` category is
+   proposed. Would need a `CONTRAST_SETS` entry in `revision.py`, and whether
+   arkān-vs-wājib is a fair exam contrast is a fiqh call.
+3. **The three AUTO-WRONG rows above** — confirm the corrections before they
+   become distractor pools.
+
+### Cascade to plan for
+
+Applying this re-runs ingest, which rewrites `index/chunks.json`, rebuilds
+`embeddings.npy` (~8s), and may shift the golden set's `expected_chunk_ids`. The
+eval must be re-run afterwards and the labels re-checked.
+
+**Bundle it with the `is_junk_char` boundary fix** (see that item under *Still
+open*), which needs the same re-ingest — one cascade instead of two.
+
+---
+
 ## Golden eval set (2026-08-03, rebalanced + labelled same day)
 
 Written by hand. Started as `eval/golden-eval-set.xlsx` — 30 content questions
@@ -802,12 +885,24 @@ components:
   2026-08-04*); add harder/ambiguous/terse cases, prioritising Hajj.
 - **`sawm-kaffarah` variant group** — split Q20 out or redefine the metric on
   recall (see *Open questions added 2026-08-04*).
+- **⚑ Zakah/Hajj MCQ coverage — draft ready, awaiting your fiqh review.**
+  `docs/category-overrides.draft.json`, 29 rows to check plus 4 proposed for
+  dropping. Not wired into anything. Read *Category coverage for Zakah and
+  Hajj* above before starting: the per-chunk approach was investigated and
+  **rejected as harmful**, the fix is an `EXTRA_HEADINGS` list in `ingest.py`,
+  and it surfaced two live-on-application `ingest.py` bugs — one of which
+  classifies `mustaḥab` as `makruh`, i.e. exactly backwards.
 - **`ingest.py`'s `fard`-in-salah over-match** — source-level classifier bug,
-  currently harmless (see *Still open*, 2026-08-05 above).
+  currently harmless (see *Still open*, 2026-08-05 above). Same file as the two
+  bugs above; worth fixing in the same pass.
 - **Context-dependent MCQ options** whose qualifying condition lives in the
   chapter heading (see *Still open*, 2026-08-05 above).
 - **`is_junk_char`'s `0x250` boundary** — documented defect, deliberately
-  deferred to the next re-ingest (see *2026-08-05* above).
+  deferred to the next re-ingest (see *2026-08-05* above). **Bundle this with
+  the category-override work above** — both require a re-ingest, and the
+  cascade (rewrite `chunks.json` → rebuild `embeddings.npy` → re-check the
+  golden set's `expected_chunk_ids` → re-run the eval) is worth paying once
+  rather than twice.
 - Update the stale routing line in `.claude/CLAUDE.md` (still says
   "Automatically span between sub-agents depending on what the user asking" —
   flagged 2026-07-27, still not fixed).

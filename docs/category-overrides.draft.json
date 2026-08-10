@@ -1,0 +1,332 @@
+[
+  {
+    "page": 13,
+    "kitab": "taharah",
+    "heading": "The conditions for wuḍū’ to be correct are three:",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~3 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 14,
+    "kitab": "taharah",
+    "heading": "Eighteen things are sunnah in wuḍū’:",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~31 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 19,
+    "kitab": "taharah",
+    "heading": "Eleven things are deemed farḍ in ghusl:",
+    "auto_category": "fard",
+    "proposed_category": "fard",
+    "items_following": "~9 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 20,
+    "kitab": "taharah",
+    "heading": "Twelve actions are sunnah in ghusl:",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~12 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 20,
+    "kitab": "taharah",
+    "heading": "Ghusl is sunnah on four occasions:",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~14 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 21,
+    "kitab": "taharah",
+    "heading": "Tayammum is correct with the following eight conditions:",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~12 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 23,
+    "kitab": "taharah",
+    "heading": "There are seven sunan of tayammum:",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~14 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 24,
+    "kitab": "taharah",
+    "heading": "The farḍ of masaḥ",
+    "auto_category": "fard",
+    "proposed_category": "fard",
+    "items_following": "~7 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 25,
+    "kitab": "taharah",
+    "heading": "The sunan of masaḥ",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~10 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 32,
+    "kitab": "salah",
+    "heading": "Mustaḥab prayer times",
+    "auto_category": "makruh",
+    "proposed_category": "mustahab",
+    "items_following": "~3 (approximate — counter can run past the section)",
+    "note": "auto=makruh is WRONG — mustahab and makruh are opposites; ingest _CATEGORY_RULES lumps them in one rule",
+    "confidence": "check"
+  },
+  {
+    "page": 32,
+    "kitab": "salah",
+    "heading": "It is mustaḥab",
+    "auto_category": "makruh",
+    "proposed_category": null,
+    "items_following": "~3 (approximate — counter can run past the section)",
+    "note": "prose fragment, not a heading",
+    "confidence": "drop"
+  },
+  {
+    "page": 37,
+    "kitab": "salah",
+    "heading": "Arkān of ṣalāh",
+    "auto_category": "general",
+    "proposed_category": "arkan",
+    "items_following": "~4 (approximate — counter can run past the section)",
+    "note": "auto=general — no rule for arkan/pillars; new category, would need a CONTRAST_SET entry",
+    "confidence": "check"
+  },
+  {
+    "page": 37,
+    "kitab": "salah",
+    "heading": "Four from the above-mentioned twenty seven are arkān:",
+    "auto_category": "general",
+    "proposed_category": "general",
+    "items_following": "~4 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 40,
+    "kitab": "salah",
+    "heading": "There are eighteen wājibāt:",
+    "auto_category": "wajib",
+    "proposed_category": "wajib",
+    "items_following": "~18 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 41,
+    "kitab": "salah",
+    "heading": "There are fifty one sunan of ṣalāh:",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~40 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 43,
+    "kitab": "salah",
+    "heading": "It is from amongst the ādāb of ṣalāh:",
+    "auto_category": "adab",
+    "proposed_category": "adab",
+    "items_following": "~6 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 45,
+    "kitab": "salah",
+    "heading": "When is it sunnah to do Raf‘ al-Yadain?",
+    "auto_category": "sunnah",
+    "proposed_category": null,
+    "items_following": "~12 (approximate — counter can run past the section)",
+    "note": "list of occasions, not rulings of one category",
+    "confidence": "drop"
+  },
+  {
+    "page": 46,
+    "kitab": "salah",
+    "heading": "Conditions for imāmah to be correct",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~6 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 46,
+    "kitab": "salah",
+    "heading": "Conditions for following an Imam",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~31 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 84,
+    "kitab": "salah",
+    "heading": "There are eighteen sunan of khuṭbah:",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~25 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 92,
+    "kitab": "salah",
+    "heading": "The sunnah shroud for a male consists of",
+    "auto_category": "sunnah",
+    "proposed_category": null,
+    "items_following": "~5 (approximate — counter can run past the section)",
+    "note": "list of garments, not a fard/sunnah contrast",
+    "confidence": "drop"
+  },
+  {
+    "page": 93,
+    "kitab": "salah",
+    "heading": "There are six conditions for janāzah ṣalāh:",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~6 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 94,
+    "kitab": "salah",
+    "heading": "There are four sunan of janāzah ṣalāh:",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~4 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 102,
+    "kitab": "sawm",
+    "heading": "The ruling of fasting, and conditions of its compulsion",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~5 (approximate — counter can run past the section)",
+    "note": "heading covers two things; verify the items are the conditions only",
+    "confidence": "check"
+  },
+  {
+    "page": 102,
+    "kitab": "sawm",
+    "heading": "Conditions which necessitate its fulfilment",
+    "auto_category": "nullifier",
+    "proposed_category": "shurut",
+    "items_following": "~4 (approximate — counter can run past the section)",
+    "note": "auto=nullifier is WRONG — matched \\bnecessitate; this is a conditions list",
+    "confidence": "check"
+  },
+  {
+    "page": 103,
+    "kitab": "sawm",
+    "heading": "Conditions which validate its fulfilment",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~3 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 116,
+    "kitab": "sawm",
+    "heading": "Things which are mustaḥab for a fasting person:",
+    "auto_category": "makruh",
+    "proposed_category": "mustahab",
+    "items_following": "~10 (approximate — counter can run past the section)",
+    "note": "auto=makruh is WRONG and polar-opposite — highest-risk row in this table",
+    "confidence": "check"
+  },
+  {
+    "page": 119,
+    "kitab": "sawm",
+    "heading": "Fulfilment of a vow prior to its condition",
+    "auto_category": "shurut",
+    "proposed_category": null,
+    "items_following": "~3 (approximate — counter can run past the section)",
+    "note": "topic heading, not a category enumeration",
+    "confidence": "drop"
+  },
+  {
+    "page": 132,
+    "kitab": "hajj",
+    "heading": "Conditions for Hajj to become compulsory",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~8 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 133,
+    "kitab": "hajj",
+    "heading": "Conditions that necessitate its fulfilment",
+    "auto_category": "nullifier",
+    "proposed_category": "shurut",
+    "items_following": "~5 (approximate — counter can run past the section)",
+    "note": "auto=nullifier is WRONG — same cause",
+    "confidence": "check"
+  },
+  {
+    "page": 133,
+    "kitab": "hajj",
+    "heading": "Conditions that validate its fulfilment",
+    "auto_category": "shurut",
+    "proposed_category": "shurut",
+    "items_following": "~4 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 134,
+    "kitab": "hajj",
+    "heading": "The wājibāt of Hajj",
+    "auto_category": "wajib",
+    "proposed_category": "wajib",
+    "items_following": "~22 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  },
+  {
+    "page": 135,
+    "kitab": "hajj",
+    "heading": "The sunan of Hajj",
+    "auto_category": "sunnah",
+    "proposed_category": "sunnah",
+    "items_following": "~35 (approximate — counter can run past the section)",
+    "note": "",
+    "confidence": "check"
+  }
+]
