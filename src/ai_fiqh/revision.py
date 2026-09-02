@@ -1,8 +1,8 @@
 """Revision mode — MCQs and flashcards (docs/research.md §2.3).
 
 The distractor problem, restated: a generated MCQ is only useful if the wrong
-answers are reliably wrong. Let Claude invent distractors and it will eventually
-invent one that happens to be true, producing a question with two right answers
+answers are reliably wrong. Let the model invent distractors and it will
+eventually invent one that happens to be true, producing a question with two right answers
 and teaching the user something false when they check the key.
 
 The fix mirrors §1.3 — exploit the book's structure instead of trusting the
@@ -12,9 +12,11 @@ model. The book classifies every enumerated ruling into a legal category, so:
     distractors      <- items from (kitab, OTHER category)      e.g. sunnah, adab
 
 A distractor drawn this way is *guaranteed* wrong, because the book itself files
-it elsewhere. The options are then lifted verbatim from the book, so Claude's
+it elsewhere. The options are then lifted verbatim from the book, so the model's
 whole job is writing the stem and the explanation -- it neither picks the answer
-nor words the choices.
+nor words the choices. That division of labour is what makes the mode portable:
+it asks the model for prose, not for judgement, so a weaker model degrades the
+wording rather than the correctness.
 
 Polarity groups (§1.3) are the second source, and they make the best questions:
 "Which of these does NOT break wuḍūʾ?" with three genuine nullifiers and one
@@ -30,7 +32,8 @@ import re
 from collections import Counter, defaultdict
 from typing import Any
 
-from .index import Retriever, load_env
+from . import llm
+from .index import Retriever
 from .normalize import fold, junk_ratio
 from .schemas import (
     Flashcard,
@@ -41,9 +44,14 @@ from .schemas import (
     ValidationFailure,
 )
 
-MODEL = "claude-opus-5"
-EFFORT = "medium"  # writing a stem around fixed options, not deciding anything
-MAX_TOKENS = 8_000
+# A stem plus an explanation, or four flashcards. Nothing here is long; the
+# ceiling exists to bound cost and to leave room in a small context window.
+MAX_TOKENS = 2_000
+
+# Floor and headroom for the flashcard passage budget. A section shorter than the
+# floor is not worth carding; the slack covers the prompt scaffolding.
+MIN_PASSAGE_TOKENS = 512
+PASSAGE_SLACK = 256
 
 # Categories the book genuinely assigns. `general` is excluded: 133 of 177 chunks
 # are topical ("Tayammum", "Chapter of Witr") rather than category-shaped, and a
@@ -269,12 +277,30 @@ that tries to cover a whole section."""
 
 
 def _client(client: Any = None) -> Any:
-    if client is not None:
-        return client
-    load_env()
-    import anthropic
+    return client if client is not None else llm.get_client()
 
-    return anthropic.Anthropic()
+
+def _max_tokens(client: Any) -> int:
+    return MAX_TOKENS + client.thinking_reserve
+
+
+def _passage_budget(client: Any) -> int:
+    """How much passage fits alongside the prompt and the cards it has to write.
+
+    Only binds on a small local window. `generate_flashcards` sends a *whole
+    section*, and sections are wildly uneven -- the Hajj rituals chapter is
+    ~5,600 tokens against a median of 435 -- so on an 8k model the largest two
+    sections would otherwise overflow the window and be truncated by the server
+    with no error. Truncating here instead makes it visible and cuts on a
+    paragraph boundary.
+    """
+    return max(
+        MIN_PASSAGE_TOKENS,
+        client.context_tokens
+        - llm.estimate_tokens(_FLASHCARD_SYSTEM)
+        - _max_tokens(client)
+        - PASSAGE_SLACK,
+    )
 
 
 def generate_mcq(
@@ -296,16 +322,14 @@ def generate_mcq(
         + f"\n\nOPTIONS\n{listing}\n\nWrite the stem and the explanation."
     )
 
-    response = _client(client).messages.parse(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        output_config={"effort": EFFORT},
-        system=[{"type": "text", "text": _MCQ_SYSTEM,
-                 "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user}],
-        output_format=MCQStem,
-    )
-    return assemble_mcq(response.parsed_output, shuffled, correct_index, category)
+    c = _client(client)
+    try:
+        stem = c.parse(_MCQ_SYSTEM, user, MCQStem, max_tokens=_max_tokens(c))
+    except llm.LLMError as exc:
+        # A model that cannot return the shape is a discarded generation, not a
+        # crashed run -- `generate_mcqs` will try another item set.
+        return None, [ValidationFailure(check="model_output", detail=str(exc)[:200])]
+    return assemble_mcq(stem, shuffled, correct_index, category)
 
 
 def option_text(item: SourceItem) -> str:
@@ -442,26 +466,35 @@ def cards_from_passage(
     cards about whichever part the model found most salient. Feeding it a chunk
     at a time is what makes coverage even.
     """
-    text = "\n".join(p["text_raw"] for p in parts)
     head = parts[0]
+    c = _client(client)
 
-    response = _client(client).messages.parse(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        output_config={"effort": EFFORT},
-        system=[{"type": "text", "text": _FLASHCARD_SYSTEM,
-                 "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user",
-                   "content": f"Write {n} flashcards from this passage.\n\n{text}"}],
-        output_format=GeneratedFlashcards,
-    )
+    full = "\n".join(p["text_raw"] for p in parts)
+    text = llm.fit_text(full, _passage_budget(c))
+    fails: list[ValidationFailure] = []
+    if len(text) < len(full):
+        fails.append(ValidationFailure(
+            check="passage_truncated",
+            detail=f"{head['bab']}: {len(full)} chars trimmed to {len(text)} "
+                   f"for a {c.context_tokens:,}-token window",
+        ))
+
+    try:
+        generated = c.parse(
+            _FLASHCARD_SYSTEM,
+            f"Write {n} flashcards from this passage.\n\n{text}",
+            GeneratedFlashcards,
+            max_tokens=_max_tokens(c),
+        )
+    except llm.LLMError as exc:
+        fails.append(ValidationFailure(check="model_output", detail=str(exc)[:200]))
+        return [], fails
 
     pages = {p for part in parts for p in range(part["page_start"], part["page_end"] + 1)}
     source_words = _content_words(text)
     cards: list[Flashcard] = []
-    fails: list[ValidationFailure] = []
 
-    for card in response.parsed_output.cards:
+    for card in generated.cards:
         back_words = _content_words(card.back)
         overlap = len(back_words & source_words) / len(back_words) if back_words else 0.0
         if overlap < MIN_GROUNDING:
@@ -522,7 +555,7 @@ def build_deck(
     *,
     retriever: Retriever | None = None,
     client: Any = None,
-    workers: int = 4,
+    workers: int | None = None,
     exclude_babs: set[str] | None = None,
 ) -> tuple[list[Flashcard], list[ValidationFailure], dict[str, Any]]:
     """Every passage of a book, carded, deduplicated, with a coverage report."""
@@ -533,6 +566,9 @@ def build_deck(
     if not units:
         return [], [ValidationFailure(check="empty_kitab", detail=kitab)], {}
     client = _client(client)
+    # Ollama serialises requests to one loaded model anyway, so its clients ask
+    # for a single worker; a hosted provider is happy with four.
+    workers = workers if workers is not None else client.default_workers
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(

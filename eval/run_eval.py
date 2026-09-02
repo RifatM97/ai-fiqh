@@ -42,15 +42,15 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ai_fiqh import prompts, qa  # noqa: E402
+from ai_fiqh import llm, prompts, qa  # noqa: E402
 from ai_fiqh.index import MIN_RERANK_SCORE, Retriever  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_PATH = ROOT / "eval" / "golden-eval-set.json"
 RESULTS_DIR = ROOT / "eval" / "results"
 
-JUDGE_MODEL = "claude-opus-5"
-JUDGE_EFFORT = "medium"
+# A verdict and a sentence of reasoning. Nothing here is long.
+JUDGE_MAX_TOKENS = 1_000
 
 ABSTAIN_CATEGORIES = {"Out of scope", "Cross-madhhab bait"}
 
@@ -105,15 +105,9 @@ The question is only whether the out-of-scope content was supplied."""
 
 
 def _judge(client, system: str, user: str, schema: type[BaseModel]):
-    response = client.messages.parse(
-        model=JUDGE_MODEL,
-        max_tokens=4_000,
-        output_config={"effort": JUDGE_EFFORT},
-        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user}],
-        output_format=schema,
+    return client.parse(
+        system, user, schema, max_tokens=JUDGE_MAX_TOKENS + client.thinking_reserve
     )
-    return response.parsed_output
 
 
 def judge_ruling(client, question: str, reference: str, answer_text: str) -> RulingVerdict:
@@ -153,13 +147,14 @@ class Row:
     recall: bool | None
     n_citations: int
     unverified_pages: list[int] = field(default_factory=list)
+    unresolved_markers: list[int] = field(default_factory=list)
     top_score: float = 0.0
     enumeration: bool = False
     seconds: float = 0.0
     answer: str = ""
 
 
-def run_one(item: dict, retriever: Retriever, client, gate: float) -> Row:
+def run_one(item: dict, retriever: Retriever, client, judge, gate: float) -> Row:
     started = time.time()
     ans = qa.answer(item["question"], retriever=retriever, client=client, gate=gate)
 
@@ -172,14 +167,14 @@ def run_one(item: dict, retriever: Retriever, client, gate: float) -> Row:
         if ans.abstained:
             verdict, reason = "declined", f"gate abstention ({ans.abstain_reason})"
         else:
-            v = judge_abstention(client, item["question"], ans.text)
+            v = judge_abstention(judge, item["question"], ans.text)
             verdict, reason = v.verdict, v.reason
         behaviour_ok = verdict == "declined"
     else:
         if ans.abstained:
             verdict, reason = "abstained", f"false abstention ({ans.abstain_reason})"
         else:
-            v = judge_ruling(client, item["question"], item["reference_answer"], ans.text)
+            v = judge_ruling(judge, item["question"], item["reference_answer"], ans.text)
             verdict, reason = v.verdict, v.reason
         behaviour_ok = verdict == "agrees"
 
@@ -197,6 +192,7 @@ def run_one(item: dict, retriever: Retriever, client, gate: float) -> Row:
         recall=recall,
         n_citations=len(ans.citations),
         unverified_pages=ans.unverified_pages,
+        unresolved_markers=ans.unresolved_markers,
         top_score=round(ans.trace.top_score, 4) if ans.trace else 0.0,
         enumeration=ans.enumeration,
         seconds=round(time.time() - started, 1),
@@ -207,7 +203,7 @@ def run_one(item: dict, retriever: Retriever, client, gate: float) -> Row:
 # --- reporting ---------------------------------------------------------------
 
 
-def report(rows: list[Row], gate: float) -> dict:
+def report(rows: list[Row], gate: float, stamp: dict) -> dict:
     answerable = [r for r in rows if not r.should_abstain]
     abstaining = [r for r in rows if r.should_abstain]
     polarity = [r for r in rows if r.category == "Polarity trap"]
@@ -234,15 +230,25 @@ def report(rows: list[Row], gate: float) -> dict:
         "recall@context": (
             sum(1 for r in answerable if r.recall), len(answerable)
         ),
+        # Both halves of layer 4: no page named from memory, and no excerpt
+        # cited that was never supplied.
         "citation validity": (
-            sum(1 for r in rows if not r.unverified_pages), len(rows)
+            sum(1 for r in rows
+                if not r.unverified_pages and not r.unresolved_markers),
+            len(rows),
         ),
         "variant agreement": (consistent, len(by_group)),
     }
 
     print(f"\n{'=' * 66}")
-    print(f"prompt {prompts.QA_PROMPT_VERSION} | model {qa.MODEL} | "
-          f"effort {qa.EFFORT} | gate {gate}")
+    print(f"prompt {stamp['prompt_version']} | model {stamp['model']} | gate {gate}")
+    print(f"judge  {stamp['judge']}")
+    if stamp["judge"] == stamp["model"]:
+        # Self-grading. Worth a line every run rather than a footnote in the
+        # tracker: a model marking its own answers is not an independent check,
+        # and these numbers are not comparable with a run judged by another one.
+        print("  !! judge and model under test are the SAME model — "
+              "scores are self-graded")
     print("=" * 66)
     for name, (num, den) in metrics.items():
         pct = f"{100 * num / den:5.1f}%" if den else "    --"
@@ -301,7 +307,11 @@ def main() -> None:
     ap.add_argument("--gate", type=float, default=MIN_RERANK_SCORE)
     ap.add_argument("--category", help="run one category only")
     ap.add_argument("--limit", type=int)
-    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--workers", type=int,
+                    help="default: 4 for a hosted provider, 1 for Ollama")
+    ap.add_argument("--provider", help="override AI_FIQH_LLM_PROVIDER for this run")
+    ap.add_argument("--judge-provider",
+                    help="grade with a different provider than the one under test")
     ap.add_argument("--sweep", action="store_true", help="gate sweep, no model calls")
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
@@ -321,30 +331,37 @@ def main() -> None:
         sweep(golden, retriever)
         return
 
-    qa.load_env()
-    import anthropic
+    client = llm.get_client(args.provider)
+    judge = llm.get_client(args.judge_provider) if args.judge_provider else client
+    workers = args.workers if args.workers is not None else client.default_workers
 
-    client = anthropic.Anthropic(max_retries=4)
+    stamp = {
+        "prompt_version": (
+            prompts.QA_PROMPT_VERSION
+            if client.supports_native_citations
+            else prompts.QA_PROMPT_VERSION_MARKERS
+        ),
+        "model": llm.describe(client),
+        "judge": llm.describe(judge),
+    }
 
-    print(f"running {len(golden)} question(s), {args.workers} workers")
+    print(f"running {len(golden)} question(s) on {stamp['model']}, {workers} workers")
     started = time.time()
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         rows = list(
-            pool.map(lambda q: run_one(q, retriever, client, args.gate), golden)
+            pool.map(lambda q: run_one(q, retriever, client, judge, args.gate), golden)
         )
     rows.sort(key=lambda r: r.id)
     print(f"done in {time.time() - started:.0f}s")
 
-    metrics = report(rows, args.gate)
+    metrics = report(rows, args.gate, stamp)
 
     RESULTS_DIR.mkdir(exist_ok=True)
     out = args.out or RESULTS_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}.json"
     out.write_text(
         json.dumps(
             {
-                "prompt_version": prompts.QA_PROMPT_VERSION,
-                "model": qa.MODEL,
-                "effort": qa.EFFORT,
+                **stamp,
                 "gate": args.gate,
                 "metrics": metrics,
                 "rows": [asdict(r) for r in rows],

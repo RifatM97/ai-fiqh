@@ -4,16 +4,21 @@ version = "0.1.0"
 description = "Grounded Hanafi Fiqh Q&A and exam revision over Nur al-Idah"
 requires-python = ">=3.13"
 dependencies = [
-    "anthropic",
     "voyageai",
     "pymupdf",
     "rank-bm25",
     "numpy",
     "pydantic",
     "python-dotenv",
+    "matplotlib>=3.11.1",
+    "ollama>=0.6.2",
+    "openai>=3.7.0",
 ]
 
 [dependency-groups]
+cloud = [
+    "anthropic>=1.3.0",
+]
 notebook = ["jupyter", "ipykernel", "matplotlib", "nbstripout"]
 ui = ["streamlit"]
 

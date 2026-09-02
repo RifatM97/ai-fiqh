@@ -3,19 +3,20 @@
 Two families:
 
 * **Output** — `MCQ` and `Flashcard`, what a caller consumes.
-* **Generation** — `PhrasedOptions` and `GeneratedFlashcard`, the narrow shapes
-  Claude is allowed to return.
+* **Generation** — `MCQStem` and `GeneratedFlashcard`, the narrow shapes the
+  model is allowed to return.
 
-The split is the point. Claude never returns an `MCQ`: it returns *phrasings* of
+The split is the point. The model never returns an `MCQ`: it returns a *stem* for
 items this code already selected, and the code assembles the question around
 them. Which item is correct, which are wrong, and where they came from are all
 decided before the model is called, so the accidentally-correct-distractor
 failure mode is structurally impossible rather than checked for afterwards.
 
-Revision mode uses `output_config.format` and therefore cannot use API citations
-(§1.7 — the two return a 400 together). It trades citation spans for a
-machine-parseable shape, which is the right way round here: the provenance is
-already known from the chunk the item was drawn from.
+Revision mode has always needed structured output rather than citations, and on
+Anthropic the two were mutually exclusive anyway (§1.7 — they return a 400
+together). That trade is still the right way round: provenance is already known
+from the chunk the item was drawn from, so nothing is lost by spending the
+response on a machine-parseable shape instead.
 """
 
 from __future__ import annotations
@@ -36,13 +37,13 @@ class SourceItem(BaseModel):
     page_end: int
 
 
-# --- what Claude is allowed to return ---------------------------------------
+# --- what the model is allowed to return -------------------------------------
 
 
 class MCQStem(BaseModel):
-    """Claude's whole job for an MCQ: a stem and an explanation. Not the options.
+    """The model's whole job for an MCQ: a stem and an explanation. Not the options.
 
-    An earlier version had Claude *phrase* each option from its source item, with
+    An earlier version had the model *phrase* each option from its source item, with
     a content-word overlap check to catch drift. Measurement killed that design:
     on eight generations, known-good options scored a median 57% overlap, because
     faithful rewording ("stand straight" -> "standing upright") is

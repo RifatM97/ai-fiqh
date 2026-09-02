@@ -13,8 +13,14 @@ from __future__ import annotations
 QA_PROMPT_VERSION = "qa-v1"
 
 # Layer 3 of §1.7. Note what is deliberately absent: no instruction to
-# double-check or verify its own answer. Opus 5 already self-verifies, and
-# telling it to again produces over-verification rather than better answers.
+# double-check or verify its own answer.
+#
+# That omission was calibrated against Opus 5, which self-verifies unprompted, so
+# instructing it again produced over-verification rather than better answers. It
+# is **not** established for any other model, and a weaker one may well need the
+# instruction that Opus made redundant. Treat it as an open prompt-engineering
+# question per provider rather than a settled decision -- and if you add the
+# instruction back, bump QA_PROMPT_VERSION so the eval runs stay readable.
 QA_SYSTEM = """\
 You answer questions about Islamic jurisprudence (fiqh) using one source: \
 *Nur al-Idah* by Abu al-Ikhlas Hasan al-Shurunbulali, a Hanafi manual covering \
@@ -103,4 +109,62 @@ def format_question(question: str) -> str:
         f"{question}\n\n"
         "Answer only from the excerpts above, citing them. If they do not settle "
         "the question, say so."
+    )
+
+
+# --- citation markers, for providers without API-native citations -------------
+#
+# Anthropic returns citations as structural objects that cannot point outside the
+# documents supplied. Azure OpenAI and Ollama return prose, so provenance has to
+# be asked for and then checked. Numbered excerpts plus `[n]` markers is the
+# cheapest scheme that stays checkable in code: `qa.resolve_markers` maps every
+# marker back to a chunk, and any marker with no excerpt behind it is reported
+# rather than quietly dropped.
+#
+# Bump QA_PROMPT_VERSION_MARKERS on any edit below, for the same reason
+# QA_PROMPT_VERSION exists.
+
+QA_PROMPT_VERSION_MARKERS = "qa-v2-markers"
+
+QA_CITATION_RULES = """\
+
+## Citing the excerpts
+
+The excerpts below are numbered. After every ruling you state, cite the excerpt \
+it came from by writing its number in square brackets — `[2]`, or `[1][3]` where \
+two excerpts support the same point. A ruling with no citation should not be in \
+the answer.
+
+Cite **numbers only**. Do not write page numbers, chapter names, or book titles \
+as citations — the numbers are resolved to pages for the reader automatically. A \
+page number recalled from memory is a fabrication even on the occasions it turns \
+out to be right.
+
+Never cite a number that is not in the list of excerpts you were given."""
+
+# The authority prompt is unchanged; only the citation mechanism differs, so the
+# two versions stay diffable.
+QA_SYSTEM_MARKERS = QA_SYSTEM + "\n" + QA_CITATION_RULES
+
+
+def format_excerpts(chunks: list[dict]) -> str:
+    """The numbered excerpt block. Numbering is 1-based — it is shown to a model."""
+    return "\n\n".join(
+        f"[{n}] {format_document_title(chunk)}\n{chunk['text_raw'].strip()}"
+        for n, chunk in enumerate(chunks, 1)
+    )
+
+
+def format_question_with_excerpts(question: str, chunks: list[dict]) -> str:
+    """The whole user turn for a marker-citing provider.
+
+    Excerpts lead and the question follows, matching the document-block ordering
+    on the Anthropic path so the two remain comparable — and so the long, stable
+    part of the prompt sits where a provider's prefix cache can reach it.
+    """
+    return (
+        f"EXCERPTS\n\n{format_excerpts(chunks)}\n\n"
+        f"{'-' * 60}\n\nQUESTION\n{question}\n\n"
+        "Answer only from the excerpts above, citing them by number. If they do "
+        "not settle the question, say so."
     )

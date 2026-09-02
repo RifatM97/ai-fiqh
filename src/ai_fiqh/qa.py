@@ -5,13 +5,22 @@ A straight line, not an agent loop:
     question
       -> retrieve (index.py)
       -> confidence gate      LAYER 2 -- abstains in code, before any model call
-      -> Claude + citations   LAYERS 1 & 3 -- document blocks, authority prompt
-      -> citation check       LAYER 4 -- every cited page was actually in context
+      -> context budget       fit the excerpts to the provider's window
+      -> model + citations    LAYERS 1 & 3 -- numbered excerpts, authority prompt
+      -> citation check       LAYER 4 -- every cited source was actually in context
     Answer
 
 The four layers of §1.7 are deliberately independent, and two of them are code.
 Layers 2 and 4 keep working on a day when the model doesn't, which is the whole
 reason they aren't prompt instructions.
+
+**Layer 1 changed when the project moved off Anthropic.** It used to be
+API-native citations: structural objects that, by construction, could not point
+outside the documents supplied. Azure OpenAI and Ollama have no equivalent, so
+the excerpts are numbered and the model cites `[n]` — and because a model *can*
+write `[9]` when eight excerpts exist, `resolve_markers` checks every marker and
+reports the ones with nothing behind them. The guarantee moved from the API into
+code, which is where layers 2 and 4 already were.
 """
 
 from __future__ import annotations
@@ -20,23 +29,16 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import prompts
-from .index import MIN_RERANK_SCORE, Retriever, SearchTrace, load_env
+from . import llm, prompts
+from .index import MIN_RERANK_SCORE, Retriever, SearchTrace
 
-MODEL = "claude-opus-5"
-MAX_TOKENS = 16_000
+# Answer length. These are short answers; the ceiling exists to bound cost and to
+# leave room in a small context window, not because answers approach it.
+MAX_TOKENS = 2_000
 
-# Thinking is on by default on Opus 5, and `max_tokens` caps thinking *plus*
-# answer text -- hence the generous ceiling above for what are short answers.
-# Effort is the cost dial: `high` matches the API default and is where a source
-# that must not be misquoted belongs. Sweep it down in eval, not by intuition.
-EFFORT = "high"
-
-# Opus 5's safety classifiers can decline a request outright; a fallback re-runs
-# it on another model server-side instead of returning the refusal. Unlikely to
-# fire on fiqh questions, but it costs nothing when unused. Set False to disable.
-ENABLE_REFUSAL_FALLBACK = True
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
+# Headroom for the parts of the prompt that are not excerpt bodies: excerpt
+# titles, separators, the question, and the instruction tail.
+CONTEXT_SLACK = 512
 
 # §2.2: enumeration questions ("list the fard acts of wudu") need the *whole*
 # section, because top-k retrieval has no notion of completeness -- it returns
@@ -56,10 +58,17 @@ _CATEGORY_CUES = re.compile(
 _PAGE_MENTION = re.compile(r"\b(?:pp?\.?|pages?)\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?\b",
                            re.IGNORECASE)
 
+# A citation marker in the answer text. Two digits is deliberate: excerpt counts
+# are single-digit-to-low-teens, and allowing three would start matching years.
+_MARKER = re.compile(r"\[(\d{1,2})\]")
+
+# Sentence boundary, for lifting the claim a marker is attached to.
+_SENT_END = re.compile(r"[.!?](?:\s|$)")
+
 
 @dataclass
 class Citation:
-    """One API-native citation, resolved back to the chunk it points into."""
+    """One citation, resolved back to the chunk it points into."""
 
     cited_text: str
     document_index: int
@@ -84,13 +93,27 @@ class Answer:
     trace: SearchTrace | None = None
     enumeration: bool = False
     unverified_pages: list[int] = field(default_factory=list)
+    # Layer 4's second half, and new with marker citations: numbers the model
+    # cited that no excerpt stands behind. Empty on the Anthropic path, where the
+    # API makes it impossible.
+    unresolved_markers: list[int] = field(default_factory=list)
+    # Excerpts the context budget could not fit. Nonzero means the model answered
+    # from less than retrieval found, which is worth surfacing, not swallowing.
+    context_dropped: int = 0
     stop_reason: str | None = None
     usage: dict[str, Any] = field(default_factory=dict)
     prompt_version: str = prompts.QA_PROMPT_VERSION
+    provider: str = ""
+    model: str = ""
 
     @property
     def pages_in_context(self) -> set[int]:
         return _pages_covered(self.chunks)
+
+    @property
+    def citation_ok(self) -> bool:
+        """Layer 4 verdict: nothing cited that was not in context."""
+        return not self.unverified_pages and not self.unresolved_markers
 
     def show(self) -> None:
         print(f"Q: {self.question}\n")
@@ -104,6 +127,12 @@ class Answer:
         if self.unverified_pages:
             print(f"\n!! LAYER 4 WARNING: cited page(s) not in context: "
                   f"{self.unverified_pages}")
+        if self.unresolved_markers:
+            print(f"\n!! LAYER 4 WARNING: cited excerpt(s) that do not exist: "
+                  f"{self.unresolved_markers}")
+        if self.context_dropped:
+            print(f"\n!! {self.context_dropped} retrieved chunk(s) did not fit the "
+                  f"context window")
         print(f"\ncontext: {len(self.chunks)} chunks, pages "
               f"{sorted(self.pages_in_context)}")
 
@@ -120,13 +149,62 @@ def is_enumeration_question(question: str) -> bool:
     return bool(_ENUMERATION_CUES.search(question) and _CATEGORY_CUES.search(question))
 
 
-def _build_documents(chunks: list[dict]) -> list[dict]:
-    """Layer 1 of §1.7 — document blocks with API-native citations enabled.
+# --- context budgeting --------------------------------------------------------
 
-    Citations come back as structural objects pointing into these blocks, rather
-    than as prose the model was asked nicely to produce. Note the constraint:
-    this is incompatible with `output_config.format`, so the revision pipeline
-    (§2.3) has to make the opposite choice.
+
+def _max_tokens(client: Any) -> int:
+    """The answer ceiling, plus whatever the provider spends on thinking first."""
+    return MAX_TOKENS + client.thinking_reserve
+
+
+def fit_to_context(
+    chunks: list[dict], client: Any, system: str, question: str
+) -> tuple[list[dict], int]:
+    """Trim the excerpt set to what the provider's context window can hold.
+
+    A no-op on a 128k Azure deployment and on Anthropic. It exists for small
+    local windows: gemma2 carries 8,192 tokens, of which the authority prompt
+    takes ~750 and the answer reserve another 2,000, leaving roughly 4,800 for
+    excerpts. Ordinary retrieval needs at most ~3,200 of that, so this only ever
+    bites on the §2.2 enumeration path, where a whole section is merged in and
+    the Hajj rituals chapter alone is ~5,600 tokens.
+
+    **Trimming from the tail is the whole design.** `chunks` arrives in priority
+    order in both modes — reranked-best-first for an ordinary question, and
+    whole-section-first for an enumeration — so dropping the tail drops the least
+    load-bearing context in either case, and never separates the top hit from the
+    §1.3 polarity siblings that follow it. At least one chunk always survives.
+    """
+    budget = (
+        client.context_tokens
+        - llm.estimate_tokens(system)
+        - llm.estimate_tokens(question)
+        - _max_tokens(client)
+        - CONTEXT_SLACK
+    )
+    kept: list[dict] = []
+    used = 0
+    for chunk in chunks:
+        cost = llm.estimate_tokens(chunk["text_raw"]) + llm.estimate_tokens(
+            prompts.format_document_title(chunk)
+        )
+        if kept and used + cost > budget:
+            break
+        kept.append(chunk)
+        used += cost
+    return kept, len(chunks) - len(kept)
+
+
+# --- citations ----------------------------------------------------------------
+
+
+def _build_documents(chunks: list[dict]) -> list[dict]:
+    """Anthropic-only: document blocks with API-native citations enabled.
+
+    Kept so the original layer-1 implementation stays runnable for comparison
+    against the marker scheme. Note the constraint that shaped §2.3: this is
+    incompatible with structured output, so revision mode makes the opposite
+    trade.
     """
     return [
         {
@@ -143,39 +221,70 @@ def _build_documents(chunks: list[dict]) -> list[dict]:
     ]
 
 
-def _extract(response: Any, chunks: list[dict]) -> tuple[str, list[Citation]]:
-    """Pull answer text and resolved citations out of the response."""
-    parts: list[str] = []
+def _sentence_around(text: str, pos: int) -> str:
+    """The sentence a marker sits in — what the citation is being attached to.
+
+    A native citation carries the *source* span it quotes. A marker cannot: the
+    model wrote a number, not a quote. So this carries the claim instead, which
+    is the more useful half for a reader checking an answer — they can see what
+    was asserted and open the cited page to confirm it.
+    """
+    start = 0
+    for m in _SENT_END.finditer(text, 0, pos):
+        start = m.end()
+    end_match = _SENT_END.search(text, pos)
+    end = end_match.end() if end_match else len(text)
+    return re.sub(r"\s+", " ", text[start:end]).strip(" -*•\t")
+
+
+def resolve_markers(
+    text: str, chunks: list[dict]
+) -> tuple[list[Citation], list[int]]:
+    """Layer 1 for providers without API-native citations.
+
+    Returns the resolved citations and the markers that resolved to nothing. The
+    second half is the part that matters: an API citation object cannot name a
+    document that was not supplied, but a model writing prose absolutely can
+    write `[9]` over five excerpts, and silently discarding those would hide a
+    fabrication that this check makes visible.
+    """
     citations: list[Citation] = []
-    for block in response.content:
-        if block.type != "text":
+    unresolved: list[int] = []
+    seen: set[tuple[str, str]] = set()
+
+    for match in _MARKER.finditer(text):
+        n = int(match.group(1))
+        if not 1 <= n <= len(chunks):
+            if n not in unresolved:
+                unresolved.append(n)
             continue
-        parts.append(block.text)
-        for raw in getattr(block, "citations", None) or []:
-            idx = getattr(raw, "document_index", None)
-            if idx is None or not 0 <= idx < len(chunks):
-                continue  # cannot happen via the API, but this is a safety layer
-            chunk = chunks[idx]
-            citations.append(
-                Citation(
-                    cited_text=getattr(raw, "cited_text", ""),
-                    document_index=idx,
-                    document_title=getattr(raw, "document_title", "") or "",
-                    chunk_id=chunk["id"],
-                    page_start=chunk["page_start"],
-                    page_end=chunk["page_end"],
-                )
+        chunk = chunks[n - 1]
+        claim = _sentence_around(text, match.start())
+        key = (chunk["id"], claim)
+        if key in seen:
+            continue
+        seen.add(key)
+        citations.append(
+            Citation(
+                cited_text=claim,
+                document_index=n - 1,
+                document_title=prompts.format_document_title(chunk),
+                chunk_id=chunk["id"],
+                page_start=chunk["page_start"],
+                page_end=chunk["page_end"],
             )
-    return "".join(parts).strip(), citations
+        )
+    return citations, sorted(unresolved)
 
 
 def verify_citations(text: str, chunks: list[dict]) -> list[int]:
     """Layer 4 of §1.7 — page numbers written in prose that weren't in context.
 
-    The API's citation objects cannot point outside the documents we supplied, so
-    they need no checking. What *can* drift is the model writing "p61" into the
-    answer text from memory. Any page named in prose that no supplied chunk
-    covers is a hallucination, and detectable without a human.
+    Resolved citations need no checking: on Anthropic they cannot point outside
+    the supplied documents, and on every other provider `resolve_markers` has
+    already rejected the ones that do. What *can* still drift is the model
+    writing "p61" into the answer text from memory. Any page named in prose that
+    no supplied chunk covers is a hallucination, and detectable without a human.
     """
     available = _pages_covered(chunks)
     claimed: set[int] = set()
@@ -189,44 +298,43 @@ def verify_citations(text: str, chunks: list[dict]) -> list[int]:
     return sorted(claimed - available)
 
 
-def _call_model(client: Any, documents: list[dict], question: str) -> Any:
-    """One request. Falls back to the non-beta path if the fallback beta is off."""
-    kwargs: dict[str, Any] = {
-        "model": MODEL,
-        "max_tokens": MAX_TOKENS,
-        "output_config": {"effort": EFFORT},
-        "system": [
-            {
-                "type": "text",
-                "text": prompts.QA_SYSTEM,
-                # The system prompt is byte-stable across every question, so it
-                # caches once and every later call reads it (§ prompt caching).
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    *documents,
-                    {"type": "text", "text": prompts.format_question(question)},
-                ],
-            }
-        ],
-    }
-    if not ENABLE_REFUSAL_FALLBACK:
-        return client.messages.create(**kwargs)
+# --- the pipeline -------------------------------------------------------------
 
-    import anthropic
 
-    try:
-        return client.beta.messages.create(
-            betas=[FALLBACK_BETA], fallbacks="default", **kwargs
+def _ask(
+    client: Any, chunks: list[dict], question: str
+) -> tuple[llm.Completion, list[Citation], list[int]]:
+    """One model call, returning text plus provenance however the provider gives it."""
+    max_tokens = _max_tokens(client)
+
+    if client.supports_native_citations:
+        completion, raw = client.cited_complete(
+            prompts.QA_SYSTEM,
+            _build_documents(chunks),
+            prompts.format_question(question),
+            max_tokens=max_tokens,
         )
-    except anthropic.BadRequestError as exc:
-        if "fallback" not in str(exc).lower():
-            raise
-        return client.messages.create(**kwargs)  # beta not enabled on this key
+        citations = [
+            Citation(
+                cited_text=quote,
+                document_index=idx,
+                document_title=prompts.format_document_title(chunks[idx]),
+                chunk_id=chunks[idx]["id"],
+                page_start=chunks[idx]["page_start"],
+                page_end=chunks[idx]["page_end"],
+            )
+            for idx, quote in raw
+            if 0 <= idx < len(chunks)
+        ]
+        return completion, citations, []
+
+    completion = client.complete(
+        prompts.QA_SYSTEM_MARKERS,
+        prompts.format_question_with_excerpts(question, chunks),
+        max_tokens=max_tokens,
+    )
+    citations, unresolved = resolve_markers(completion.text, chunks)
+    return completion, citations, unresolved
 
 
 def answer(
@@ -261,21 +369,32 @@ def answer(
     if enumeration and trace.reranked:
         # §2.2 -- ground the answer in the complete section, not a similarity-
         # ranked slice of it. Merged rather than substituted so the group
-        # expansion from §1.3 survives.
+        # expansion from §1.3 survives. Section first, because `fit_to_context`
+        # trims from the tail and the section is what this mode is for.
         section = r.get_section(trace.reranked[0].id)
         section_ids = {s["id"] for s in section}
         chunks = section + [c for c in chunks if c["id"] not in section_ids]
 
     if client is None:
-        load_env()
-        import anthropic
+        client = llm.get_client()
 
-        client = anthropic.Anthropic()
+    system = (
+        prompts.QA_SYSTEM
+        if client.supports_native_citations
+        else prompts.QA_SYSTEM_MARKERS
+    )
+    prompt_version = (
+        prompts.QA_PROMPT_VERSION
+        if client.supports_native_citations
+        else prompts.QA_PROMPT_VERSION_MARKERS
+    )
+    chunks, dropped = fit_to_context(chunks, client, system, question)
 
-    response = _call_model(client, _build_documents(chunks), question)
+    completion, citations, unresolved = _ask(client, chunks, question)
 
-    # Opus 5 can decline outright — check before reading content.
-    if response.stop_reason == "refusal":
+    # A provider may decline outright — an Anthropic refusal stop reason, or an
+    # Azure content filter. Check before reading the (empty) content.
+    if completion.refused:
         return Answer(
             question=question,
             text=prompts.ABSTENTION_OUT_OF_SCOPE,
@@ -284,36 +403,37 @@ def answer(
             chunks=chunks,
             trace=trace,
             enumeration=enumeration,
-            stop_reason=response.stop_reason,
+            context_dropped=dropped,
+            stop_reason=completion.stop_reason,
+            prompt_version=prompt_version,
+            provider=client.provider,
+            model=client.model,
         )
-
-    text, citations = _extract(response, chunks)
-    usage = response.usage
 
     return Answer(
         question=question,
-        text=text,
+        text=completion.text,
         abstained=False,
         citations=citations,
         chunks=chunks,
         trace=trace,
         enumeration=enumeration,
-        unverified_pages=verify_citations(text, chunks),  # Layer 4
-        stop_reason=response.stop_reason,
-        usage={
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0),
-            "cache_creation_input_tokens": getattr(
-                usage, "cache_creation_input_tokens", 0
-            ),
-        },
+        unverified_pages=verify_citations(completion.text, chunks),  # Layer 4
+        unresolved_markers=unresolved,
+        context_dropped=dropped,
+        stop_reason=completion.stop_reason,
+        usage=completion.usage,
+        prompt_version=prompt_version,
+        provider=client.provider,
+        model=client.model,
     )
 
 
 def main() -> None:
     """Smoke-test one question of each kind."""
     r = Retriever(verbose=False)
+    client = llm.get_client()
+    print(f"provider: {llm.describe(client)}  (context {client.context_tokens:,} tok)\n")
     for q in (
         "What are the four fard acts of wudu?",
         "Does laughing aloud break wudu?",
@@ -321,7 +441,7 @@ def main() -> None:
         "Do Shafi'i scholars consider bleeding to break wudu?",
     ):
         print("=" * 72)
-        answer(q, retriever=r).show()
+        answer(q, retriever=r, client=client).show()
         print()
 
 

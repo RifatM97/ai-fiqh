@@ -366,6 +366,119 @@ change.**
 
 ---
 
+## 2026-09-02 — off Anthropic: a provider abstraction, and layer 1 rebuilt
+
+**Why:** the Anthropic credit balance was running out. The decision was to make
+the provider a setting rather than a rewrite, and to default to Azure OpenAI.
+
+### What changed
+
+- **`src/ai_fiqh/llm.py`** (new) — three backends behind one interface:
+  `complete()` and `parse()`, plus `cited_complete()` on Anthropic only.
+  Selected by `AI_FIQH_LLM_PROVIDER` (`azure` default | `ollama` | `anthropic`).
+  Every provider failure is raised as one of four classes (`LLMConfigError`,
+  `LLMUnavailable`, `LLMOverloaded`, `LLMError`) so `app.py` no longer imports a
+  vendor SDK to catch its exceptions.
+- **`anthropic` moved to the `cloud` dependency group**; `openai` and `ollama`
+  are now first-class deps. The Anthropic path is *kept, not deleted* — it is
+  the only implementation with API-native citations, so it is what the
+  replacement gets measured against.
+- **Azure parameter dialects are discovered, not tabulated.** Deployment names
+  are arbitrary, so nothing about the underlying model can be read off one.
+  `_AzureClient._adapt` learns `max_completion_tokens` vs `max_tokens`, and
+  whether `temperature` is accepted, from the 400 it gets back — once per
+  process. This is deliberately not a model table, which would go stale.
+
+### Layer 1 of §1.7 was rebuilt, and it is weaker than what it replaced
+
+API-native citations were a *structural* guarantee: a citation object could not
+name a document that was not supplied. No other provider offers this. The
+replacement numbers the excerpts and asks for `[n]` markers, which `qa.resolve_
+markers` maps back to chunks — **and reports the markers that resolve to
+nothing**, because a model writing prose absolutely can cite `[9]` over five
+excerpts. Silently dropping those would have hidden exactly the fabrication the
+layer exists to catch.
+
+Two honest downgrades, recorded so they are not rediscovered later:
+
+1. **Provenance is asked for, not guaranteed.** The check is now code rather
+   than API structure. It catches out-of-range markers; it cannot catch a
+   marker that points at a real excerpt that does not support the claim.
+2. **`cited_text` no longer holds a source span.** A native citation quotes the
+   source; a marker is just a number. `_sentence_around` attaches the *claim*
+   instead — which is arguably more useful to a reader checking an answer, but
+   it is not the same field and the UI shows something different now.
+
+`prompts.QA_SYSTEM` is unchanged; the citation rules are appended separately as
+`QA_SYSTEM_MARKERS` / `QA_PROMPT_VERSION_MARKERS = "qa-v2-markers"` so the two
+stay diffable and eval runs stay attributable.
+
+### Context budgeting (`qa.fit_to_context`)
+
+New, and needed only because small windows are now reachable. A no-op on Azure
+(128k) and Anthropic (200k). Measured worst cases on this corpus:
+
+| Path | Worst case | 8k model |
+|---|---|---|
+| Ordinary Q&A | ~4,800 tok | fits |
+| §2.2 enumeration (whole section + top-5) | ~9,500 tok | 6/14 chunks kept |
+| `generate_flashcards` on Hajj rituals | 22,346 chars | trimmed to 20,324 |
+
+Trimming is **from the tail**, which is load-bearing: `chunks` arrives in
+priority order in both modes (reranked-best-first, or whole-section-first for an
+enumeration), so the tail is the least valuable context in either case and the
+top hit is never separated from its §1.3 polarity siblings. At least one chunk
+always survives. Anything dropped is reported on `Answer.context_dropped` rather
+than swallowed.
+
+**Ollama's `num_ctx` defaults to 2,048**, not the model's window. Without setting
+it explicitly a retrieval context that fits gemma2's 8,192 would have been
+truncated in half, silently, with nothing in the response to say so.
+
+### Measured: gemma2:9b fails the polarity case that retrieval solved
+
+One live question through `ollama/gemma2:9b`, 4,833 input tokens, 67s:
+
+> **Q: Does laughing aloud break wudu?** — gemma2 quoted the *non*-nullifiers
+> list back verbatim and concluded "This source does not mention laughing
+> aloud."
+
+That is **wrong**, and the failure is entirely the model's. Retrieval did its
+job: both sides of the polarity group were in context, and
+`017-those-things-which-nullify-wudu` (p17) item 11 reads "The loud laughing of a
+mature person, whilst awake, in a prayer consisting of…". The model read one side
+of the contrasting pair and ignored the other — **precisely the failure §1.3's
+group expansion exists to make impossible, reintroduced at the model layer.**
+
+Worth stating plainly: the polarity design guarantees both sides *reach* the
+model. It cannot make the model read them. Layers 2 and 4 are code and held fine
+here; layers 1 and 3 are only ever as good as the model reading them.
+
+### Eval harness: judging is now a separate concern
+
+`--provider` and `--judge-provider` were added, and every run is stamped with
+both. By default the judge *is* the model under test, which is self-grading; the
+harness now prints a warning when they match. `citation validity` counts both
+halves of layer 4 (`unverified_pages` **and** `unresolved_markers`).
+
+### Still open after this pass
+
+- **Azure is not yet configured or tested.** `AZURE_OPENAI_ENDPOINT`,
+  `_API_KEY` and `_DEPLOYMENT` are unset; the Azure path is written and compiles
+  but has never made a live call. Everything verified below was verified through
+  Ollama, which exercises the identical non-native-citation code path.
+- **The eval has not been re-run on any new provider.** The 40/40 in
+  `eval/results/20260804-103342.json` is `claude-opus-5` with native citations
+  and `qa-v1`. It does **not** carry over. Do not quote it for Azure.
+- **`MIN_RERANK_SCORE = 0.74` is unaffected** — it gates on the Voyage reranker,
+  which did not change. Retrieval is untouched by this pass.
+- **The "no self-verification instruction" omission in `QA_SYSTEM` was
+  calibrated on Opus 5** and is not established for any other model. A weaker
+  model may need the instruction Opus made redundant. Flagged in `prompts.py`.
+- **Azure subscription is a corporate Vodafone tenant** (`vf.group.architecture.
+  chatgptpoc.openai-cha.dev`) while this is a personal project. Acceptable-use
+  question, raised with the user 2026-09-02.
+
 ## Environment
 
 - **Path:** `/Users/rifatmahammod/Developer/personal-projects/ai-fiqh`

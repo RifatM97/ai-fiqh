@@ -25,7 +25,7 @@ import streamlit as st
 if __package__ in (None, ""):  # `streamlit run` executes this as a script
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ai_fiqh import qa, revision
+from ai_fiqh import llm, qa, revision
 from ai_fiqh.index import MIN_RERANK_SCORE, Retriever
 from ai_fiqh.normalize import display_title
 
@@ -42,37 +42,42 @@ def get_retriever() -> Retriever:
 
 @st.cache_resource(show_spinner=False)
 def get_client():
-    qa.load_env()
-    import anthropic
+    """One model client for the whole server. Raises only on misconfiguration."""
+    return llm.get_client()
 
-    # The SDK retries 429/5xx on its own; 5 rather than the default 2 because a
-    # 529 overload is transient and a user clicking a button would rather wait
-    # than see it fail.
-    return anthropic.Anthropic(max_retries=5)
+
+def require_client():
+    """The client, or a stopped page with an actionable message.
+
+    A missing endpoint or deployment name is not something a spinner should hide
+    and not something a traceback explains, so it ends the run with the name of
+    the setting that is absent.
+    """
+    try:
+        return get_client()
+    except llm.LLMError as exc:
+        st.error(str(exc))
+        st.stop()
 
 
 def guarded(fn, *args, **kwargs):
-    """Run a model call, turning API failures into a message instead of a stack.
+    """Run a model call, turning provider failures into a message instead of a stack.
 
     Overloads and rate limits are ordinary weather, not bugs, and a traceback in
     the middle of the page tells a student nothing they can act on. Returns None
-    on failure so the caller leaves previous output alone.
+    on failure so the caller leaves previous output alone. Every provider raises
+    into the same four classes, so this reads the same whichever one is selected.
     """
-    import anthropic
-
     try:
         return fn(*args, **kwargs)
-    except anthropic.RateLimitError:
-        st.warning("Rate limited. Wait a moment and try again.")
-    except anthropic.APIStatusError as exc:
-        if exc.status_code == 529:
-            st.warning("The API is overloaded right now. Try again in a moment.")
-        elif exc.status_code == 400 and "credit balance" in str(exc).lower():
-            st.error("The Anthropic account is out of credit.")
-        else:
-            st.error(f"API error {exc.status_code}. Nothing was generated.")
-    except anthropic.APIConnectionError:
-        st.error("Could not reach the API. Check the network and try again.")
+    except llm.LLMOverloaded as exc:
+        st.warning(f"{exc} Wait a moment and try again.")
+    except llm.LLMUnavailable as exc:
+        st.error(str(exc))
+    except llm.LLMConfigError as exc:
+        st.error(f"Configuration problem — {exc}")
+    except llm.LLMError as exc:
+        st.error(f"The model call failed: {exc}")
     return None
 
 
@@ -128,7 +133,10 @@ def render_answer(ans: qa.Answer) -> None:
                     f"{ans.trace.top_score:.3f} if a search ran. No model call "
                     f"was made — this is §1.7 layer 2, which abstains in code."
                 ),
-                "refusal": "The model declined the request (§1.7 safety classifier).",
+                "refusal": (
+                    "The provider declined or filtered the request "
+                    "(§1.7 — a safety classifier or content filter)."
+                ),
             }.get(ans.abstain_reason, ans.abstain_reason or "unknown")
             st.write(reason)
         return
@@ -142,6 +150,22 @@ def render_answer(ans: qa.Answer) -> None:
             f"**Citation check failed.** The answer names page(s) "
             f"{ans.unverified_pages}, which were not in the retrieved context. "
             f"Treat this answer as unreliable."
+        )
+
+    if ans.unresolved_markers:
+        # The marker-scheme half of layer 4, and the reason the scheme is
+        # acceptable at all: a cited excerpt that does not exist is caught here
+        # rather than read as provenance.
+        st.error(
+            f"**Citation check failed.** The answer cites excerpt(s) "
+            f"{ans.unresolved_markers}, which were never supplied to it. Treat "
+            f"this answer as unreliable."
+        )
+
+    if ans.context_dropped:
+        st.warning(
+            f"{ans.context_dropped} retrieved passage(s) did not fit the model's "
+            f"context window and were not sent. The answer may be incomplete."
         )
 
     pages = sorted(ans.pages_in_context)
@@ -194,7 +218,7 @@ def tab_qa() -> None:
                 qa.answer,
                 question.strip(),
                 retriever=get_retriever(),
-                client=get_client(),
+                client=require_client(),
             )
         if ans is not None:
             st.session_state["last_answer"] = ans
@@ -225,7 +249,7 @@ def tab_mcq() -> None:
             got = guarded(
                 revision.generate_mcqs,
                 kitab, category, n=int(count),
-                retriever=get_retriever(), client=get_client(),
+                retriever=get_retriever(), client=require_client(),
             )
         if got is not None:
             st.session_state["mcqs"] = got
@@ -275,7 +299,7 @@ def tab_flashcards() -> None:
         with st.spinner("Writing cards…"):
             got = guarded(
                 revision.generate_flashcards,
-                first["id"], n=4, retriever=r, client=get_client(),
+                first["id"], n=4, retriever=r, client=require_client(),
             )
         if got is not None:
             st.session_state["cards"] = got
@@ -302,9 +326,15 @@ def main() -> None:
     with card_tab:
         tab_flashcards()
     st.divider()
+    # Which model answered is not a detail here: the abstention behaviour the
+    # whole project rests on is model-dependent, so it belongs on the page.
+    try:
+        backend = llm.describe(get_client())
+    except llm.LLMError:
+        backend = f"{llm.active_provider()} (not configured)"
     st.caption(
         "Grounded in one book and one madhhab. For anything consequential, "
-        "ask a qualified scholar."
+        f"ask a qualified scholar.  ·  answered by `{backend}`"
     )
 
 
