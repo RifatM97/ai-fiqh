@@ -31,6 +31,8 @@ from typing import Any
 
 from . import llm, prompts
 from .index import MIN_RERANK_SCORE, Retriever, SearchTrace
+from .normalize import fold
+from .schemas import RewrittenQuery
 
 # Answer length. These are short answers; the ceiling exists to bound cost and to
 # leave room in a small context window, not because answers approach it.
@@ -39,6 +41,16 @@ MAX_TOKENS = 2_000
 # Headroom for the parts of the prompt that are not excerpt bodies: excerpt
 # titles, separators, the question, and the instruction tail.
 CONTEXT_SLACK = 512
+
+# The grey band: retrieval that nearly cleared the gate, where a rephrasing is
+# worth one cheap call before giving up. Below this, nothing relevant was found
+# and rewriting is throwing money at a question the book does not answer.
+#
+# 0.60 is chosen against the measured distribution rather than by feel. On the
+# golden set the should-abstain median is 0.5586, so most genuinely out-of-scope
+# questions sit below the floor and never trigger a call at all.
+REWRITE_FLOOR = 0.60
+REWRITE_MAX_TOKENS = 200
 
 # §2.2: enumeration questions ("list the fard acts of wudu") need the *whole*
 # section, because top-k retrieval has no notion of completeness -- it returns
@@ -97,6 +109,11 @@ class Answer:
     # cited that no excerpt stands behind. Empty on the Anthropic path, where the
     # API makes it impossible.
     unresolved_markers: list[int] = field(default_factory=list)
+    # Set when the grey-band rewrite fired and improved retrieval. `original_
+    # score` is what the user's own wording scored, kept so the eval can measure
+    # whether rewriting is earning its call.
+    rewritten_query: str | None = None
+    original_score: float | None = None
     # Excerpts the context budget could not fit. Nonzero means the model answered
     # from less than retrieval found, which is worth surfacing, not swallowing.
     context_dropped: int = 0
@@ -120,6 +137,12 @@ class Answer:
         print(self.text)
         if self.abstained:
             print(f"\n[ABSTAINED — {self.abstain_reason}]")
+            if self.rewritten_query and self.trace:
+                print(f"  (a rewrite was tried and still missed the gate: "
+                      f"{self.rewritten_query!r}, {self.original_score:.4f} -> "
+                      f"{self.trace.top_score:.4f})")
+            elif self.trace:
+                print(f"  (top rerank score {self.trace.top_score:.4f})")
             return
         print(f"\n--- {len(self.citations)} citation(s) ---")
         for c in self.citations:
@@ -133,6 +156,10 @@ class Answer:
         if self.context_dropped:
             print(f"\n!! {self.context_dropped} retrieved chunk(s) did not fit the "
                   f"context window")
+        if self.rewritten_query:
+            after = f" -> {self.trace.top_score:.4f}" if self.trace else ""
+            print(f"\nretrieval used a rewritten query: {self.rewritten_query!r}"
+                  f"  (score {self.original_score:.4f}{after})")
         print(f"\ncontext: {len(self.chunks)} chunks, pages "
               f"{sorted(self.pages_in_context)}")
 
@@ -298,6 +325,37 @@ def verify_citations(text: str, chunks: list[dict]) -> list[int]:
     return sorted(claimed - available)
 
 
+# --- query rewriting ----------------------------------------------------------
+
+
+def rewrite_query(question: str, client: Any) -> str | None:
+    """A better *search query* for a question that nearly cleared the gate.
+
+    Returns None when the model declines to improve it, returns it unchanged, or
+    fails outright — a failed rewrite must degrade to the original abstention,
+    never to an exception, because this runs on the path of a question that was
+    about to be answered with "the book does not cover this".
+
+    **This does not weaken layer 2.** The abstention decision is still made in
+    code, on a reranker score, after this returns; all this changes is which
+    passages that score is computed over. The model sees the question and
+    nothing else — no corpus text, and its output never reaches the user.
+    """
+    try:
+        result = client.parse(
+            prompts.QUERY_REWRITE_SYSTEM,
+            question,
+            RewrittenQuery,
+            max_tokens=REWRITE_MAX_TOKENS + client.thinking_reserve,
+        )
+    except llm.LLMError:
+        return None
+    candidate = result.query.strip()
+    if not candidate or fold(candidate) == fold(question):
+        return None
+    return candidate
+
+
 # --- the pipeline -------------------------------------------------------------
 
 
@@ -343,16 +401,39 @@ def answer(
     retriever: Retriever | None = None,
     client: Any = None,
     gate: float = MIN_RERANK_SCORE,
+    rewrite: bool = True,
 ) -> Answer:
     """Answer one question, or abstain.
 
     `gate` is exposed so the eval harness can sweep the §1.7 layer-2 threshold
-    against false-abstention rate without editing module state.
+    against false-abstention rate without editing module state. `rewrite` is
+    exposed for the same reason — so the grey-band retry can be measured against
+    its own absence rather than assumed to help.
     """
     r = retriever if retriever is not None else Retriever(verbose=False)
     trace = r.search(question)
 
-    # --- Layer 2: abstain in code, before the model is ever called -----------
+    # --- Grey band: one rephrasing before giving up (§1.5) -------------------
+    # Retrieval frequently succeeds while the *score* misses. Measured
+    # 2026-09-03: "does bleeding from the mouth break wudu?" put the exactly
+    # correct chunk at rerank #1 and still abstained, by 0.0017.
+    rewritten_query: str | None = None
+    original_score: float | None = None
+    if rewrite and REWRITE_FLOOR <= trace.top_score < gate:
+        if client is None:
+            client = llm.get_client()
+        candidate = rewrite_query(question, client)
+        if candidate:
+            retried = r.search(candidate)
+            # Keep the rephrasing only if it actually retrieved better. A rewrite
+            # that scores worse is discarded silently -- the user asked the first
+            # question, and there is no reason to answer a worse one.
+            if retried.top_score > trace.top_score:
+                original_score, rewritten_query, trace = (
+                    trace.top_score, candidate, retried
+                )
+
+    # --- Layer 2: abstain in code, before any answer is generated ------------
     if trace.top_score < gate:
         return Answer(
             question=question,
@@ -361,6 +442,8 @@ def answer(
             abstain_reason="low-confidence",
             trace=trace,
             chunks=[],
+            rewritten_query=rewritten_query,
+            original_score=original_score,
         )
 
     chunks = [s.chunk for s in trace.results]
@@ -404,6 +487,8 @@ def answer(
             trace=trace,
             enumeration=enumeration,
             context_dropped=dropped,
+            rewritten_query=rewritten_query,
+            original_score=original_score,
             stop_reason=completion.stop_reason,
             prompt_version=prompt_version,
             provider=client.provider,
@@ -421,6 +506,8 @@ def answer(
         unverified_pages=verify_citations(completion.text, chunks),  # Layer 4
         unresolved_markers=unresolved,
         context_dropped=dropped,
+        rewritten_query=rewritten_query,
+        original_score=original_score,
         stop_reason=completion.stop_reason,
         usage=completion.usage,
         prompt_version=prompt_version,

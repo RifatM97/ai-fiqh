@@ -126,12 +126,18 @@ def render_answer(ans: qa.Answer) -> None:
         # a failed request -- the whole design exists to make it happen.
         st.info(ans.text)
         with st.expander("Why it abstained"):
+            retried = (
+                f" A rewritten query ({ans.rewritten_query!r}) was tried and "
+                f"still missed, {ans.original_score:.3f} → "
+                f"{ans.trace.top_score:.3f}."
+                if ans.rewritten_query and ans.trace else ""
+            )
             reason = {
                 "low-confidence": (
                     f"Nothing retrieved scored above the confidence gate "
                     f"({MIN_RERANK_SCORE}); the best match was "
-                    f"{ans.trace.top_score:.3f} if a search ran. No model call "
-                    f"was made — this is §1.7 layer 2, which abstains in code."
+                    f"{ans.trace.top_score:.3f} if a search ran. The abstention "
+                    f"itself is §1.7 layer 2, decided in code." + retried
                 ),
                 "refusal": (
                     "The provider declined or filtered the request "
@@ -175,6 +181,16 @@ def render_answer(ans: qa.Answer) -> None:
         + (" · whole-section lookup (enumeration)" if ans.enumeration else "")
     )
 
+    if ans.rewritten_query:
+        # The user asked one thing and the book was searched for another. That is
+        # a retrieval-only substitution and it changed nothing about what may be
+        # asserted, but it is not something to hide from them.
+        st.caption(
+            f"🔎 Searched the book for *“{ans.rewritten_query}”* — the original "
+            f"wording scored {ans.original_score:.3f} against the "
+            f"{MIN_RERANK_SCORE} confidence gate."
+        )
+
     if ans.citations:
         bab_of = {c["id"]: c["bab"] for c in ans.chunks}
         with st.expander(f"Cited passages ({len(ans.citations)})"):
@@ -190,6 +206,8 @@ def render_answer(ans: qa.Answer) -> None:
             st.caption(
                 f"gate {MIN_RERANK_SCORE} · top reranked score "
                 f"{ans.trace.top_score:.3f}"
+                + (f" · rewritten from {ans.original_score:.3f}"
+                   if ans.rewritten_query else "")
             )
             for s in ans.trace.results:
                 mark = " ← group expansion" if s.source == "group-expansion" else ""

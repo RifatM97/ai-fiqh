@@ -479,6 +479,239 @@ halves of layer 4 (`unverified_pages` **and** `unresolved_markers`).
   chatgptpoc.openai-cha.dev`) while this is a personal project. Acceptable-use
   question, raised with the user 2026-09-02.
 
+## 2026-09-03 — false abstentions: the gate, not the retriever
+
+Two real questions came back "the book does not cover this" when the book covers
+both. Investigated in `notebooks/explore.ipynb` §8.
+
+### Diagnosis: retrieval succeeded, the gate discarded the result
+
+| Question | rerank | verdict |
+|---|---|---|
+| "How to do Iqama" | 0.6484 | ABSTAIN |
+| "does bleeding from the mouth break wudu?" | 0.7383 | ABSTAIN — **by 0.0017** |
+
+The notebook's first read was "no chunks are being retrieved". That is not what
+happened: `qa.answer` returns `chunks=[]` on a gate abstention by construction,
+before it assembles any context. Retrieval had in fact **succeeded** — for the
+bleeding question the exactly correct chunk,
+`017-those-things-which-nullify-wudu`, was ranked **#1 by the reranker**. This is
+a layer-2 false abstention, not a retrieval failure, and the distinction matters
+because it points at an entirely different fix.
+
+### The embedding model was ruled out, with measurement
+
+The hypothesis on the table was a better embedding model or a higher
+`EMBED_DIM`. Both were rejected:
+
+| Stage | recall@20 on the 24 labelled golden questions |
+|---|---|
+| BM25 | 24/24 |
+| **Dense** | **24/24** — correct chunk in the top 3 every time, median rank 1 |
+| Fused | 24/24 |
+
+There is no headroom to buy. And more decisively, `rerank-2.5` is a
+**cross-encoder**: it re-scores raw text and never touches the embeddings, so
+`EMBED_MODEL` and `EMBED_DIM` cannot move the number the gate compares against,
+except by changing which candidates reach it — and the right candidate already
+does. **Do not spend a re-embed on this.**
+
+### The gate threshold sits in a dead zone
+
+Every score `rerank-2.5` returns is an exact multiple of 1/512. Since
+`0.74 × 512 = 378.88`, the representable values either side are **0.738281** and
+**0.740234**, and *no score can ever land between them*. So:
+
+- the effective gate is **0.740234**, not the 0.74 written in `index.py`;
+- the bleeding question's 0.7383 is **the highest score that can possibly fail**.
+
+Worth setting `MIN_RERANK_SCORE` to a representable value so the constant means
+what it says.
+
+### What was fixed
+
+**1. Dead and missing aliases (`normalize.py`).** `iqama` was not in the BM25
+vocabulary — the corpus spells it `iqamah` — so BM25 scored zero on the query's
+only content word and ranked on `how`/`to`/`do`, handing the top four slots to
+"Chapter on how to perform the rituals of Hajj". Added 25 romanisation variants,
+mostly the dropped-trailing-h class.
+
+Auditing that turned up **three pre-existing dead aliases** — targets that appear
+**zero** times in the corpus, so the expansion could never match:
+
+| alias target | occurrences | corpus actually uses |
+|---|---|---|
+| `rakah` ← rakat, rakaat, rakah | **0** | `rakaah` (143) |
+| `sahur` ← suhoor, sehri | **0** | `suhur` (2) |
+| `sai` ← saee, saiy | **0** | folds to `say`, indistinguishable from the English verb |
+
+`rakah` is the serious one: it is among the most common terms in the salah
+chapters and every query mentioning rak'ahs was being expanded with a term that
+could not match. `sai` now expands to `safa marwah` instead, since expanding to
+`say` would add 58 hits of "he said". **Every alias target is now verified
+present in `text_folded`** — a test worth keeping.
+
+**2. Grey-band query rewriting (`qa.py`).** When the top score lands in
+`[REWRITE_FLOOR=0.60, gate)`, one cheap call rewrites the *question* into a
+better *search query* and retrieval runs again; the rephrasing is kept only if it
+actually scores higher. Measured:
+
+| Question | before | after | outcome |
+|---|---|---|---|
+| How to do Iqama | 0.6484 | **0.8203** | answered correctly |
+| does bleeding from the mouth break wudu? | 0.7383 | **0.8320** | answered correctly |
+| Does the Iqama involve repitition | 0.6094 | 0.7383 | **still abstains** — lands exactly on the dead-zone value |
+
+**This does not weaken layer 2.** The model sees the question and nothing else —
+no corpus text — its output never reaches the user, and the abstention is still
+decided in code on a reranker score afterwards. What it does change is that a
+grey-band question now costs one model call before abstaining.
+
+### The safety check that mattered
+
+Rewriting could launder an out-of-scope question into an answerable one. The
+prompt therefore forbids dropping scope qualifiers, and this was tested against
+all 16 should-abstain questions:
+
+- rewrite fired on **2/16**; the other 14 were below the 0.60 floor or above the
+  gate, and the 8 out-of-scope ones never triggered a call at all;
+- **both rewrites preserved the madhhab name** ("…in the Shafi'i school",
+  "Hanbali fiqh…") — the safety property held;
+- **1** (Q35, Hanbali) crossed the gate and reached the model, which declined the
+  comparative and gave the Hanafi position — the designed §2.4 behaviour, scored
+  `declined` rather than `leaked`.
+
+Net effect: one question moved from a layer-2 code abstention to a layer-3 model
+decline. That is a real shift of load from code to model and should be watched,
+but it is the behaviour §2.4 specifies.
+
+### Still open
+
+- **The eval has not been re-run** with rewriting on. `--no-rewrite` exists
+  precisely so it can be measured against its own absence; do that before
+  claiming it helps.
+- **`MIN_RERANK_SCORE` is unchanged at 0.74.** Observed should-abstain max is
+  0.7188 and the failing legitimate question is 0.7383, so a gate anywhere in
+  (0.7188, 0.7383] would fix the third question and still exclude every
+  should-abstain case measured. **But that is re-fitting on the same saturated
+  set the tracker already warns about**, and it is a safety-relevant constant —
+  it should move on evidence from a hardened golden set, not on one example.
+- **These two questions are not in the golden set.** They are the first
+  real-world false abstentions found, and they belong in it — see the standing
+  "harden the golden set" item, for which this is now direct evidence.
+
+## 2026-09-04 — golden set to 42, eval re-run, and an Azure content-filter wall
+
+### Golden set: 40 -> 42
+
+The two real-world false abstentions from 2026-09-03 are now in the set, worded
+**exactly as they were typed**, typo and all — the vagueness is the thing under
+test and "fixing" the wording would delete the test.
+
+| id | category | question | why it is here |
+|---|---|---|---|
+| Q41 | Polarity trap | "does bleeding from the mouth break wudu?" | scored 0.7383, abstained by 0.0017 with the correct chunk at rerank #1 |
+| Q42 | Straightforward covered | "How to do Iqama" | scored 0.6484; `iqama` was absent from the BM25 vocabulary |
+
+Categories are now uneven (9/9/8/8/8). That is deliberate: the alternative is
+padding two categories with questions nobody has a reason to ask.
+
+### Eval: the rewrite works, and the headline number cannot show it
+
+Three runs on `azure/gpt-5.4`, self-graded (no independent judge available with
+Anthropic credit exhausted — the harness prints the warning every run).
+
+| metric | rewrite OFF | rewrite ON | ON, 2nd run |
+|---|---|---|---|
+| behaviour | 39/42 | 39/42 | **40/42** |
+| ruling agreement | 23/26 | 23/26 | 24/26 |
+| **false abstention** | **3/26** | **1/26** | **1/26** |
+| **recall@context** | **24/26** | **26/26** | **26/26** |
+| **polarity accuracy** | **8/9** | **9/9** | **9/9** |
+| abstention (should abstain) | 16/16 | 16/16 | 16/16 |
+| citation validity | 42/42 | 42/42 | 42/42 |
+
+**Read the headline number sceptically.** Rewrite-off and rewrite-on both scored
+39/42, which looks like no effect. It is not: the rewrite fixed exactly the two
+questions it targeted (Q41 0.7383 -> 0.8320, Q42 0.6484 -> 0.8203, both
+`abstained` -> `agrees`) while two *unrelated* questions, Q23/Q24, regressed
+`agrees` -> `incomplete` in the same run.
+
+Q23/Q24 were never rewritten, and their retrieval was byte-identical between
+runs (`top_score=0.8555`, `recall=True`). They regressed purely from generation
+nondeterminism — **`gpt-5.4` accepts `temperature=0.0` and is still not
+deterministic.** Two identical rewrite-on runs scored 39/42 and 40/42.
+
+So: **this harness has ±1–2 questions of run-to-run noise, and a single run
+cannot resolve a 2-question difference.** Judge any future change on the
+retrieval-determined metrics (false abstention, recall@context), which are
+stable, not on `behaviour`. Repeat runs before believing a small delta.
+
+The rewrite's cost is bounded and low: it fired on 4/42, and out-of-scope
+questions sit below the 0.60 floor so they never spend a call.
+
+### ⚑ Azure's content filter blocks part of the Book of Purity
+
+`Q01 "What are the obligatory (fard) acts of ghusl?"` failed in **all three
+runs**, deterministically, and it is not a retrieval or model problem:
+
+```
+019-things-which-do-not-necessitate-ghusl  p19  ->  400 content_filter, sexual: medium
+```
+
+Isolated chunk by chunk. It is a plain classical enumeration of the ten things
+that do not require ritual bathing — madhi, wadi, a dream without wetness — and
+Azure's default filter rejects **the whole prompt** on it. `param` is `prompt`,
+so it is the *book's own text* being refused, not the question and not the
+answer.
+
+Two things make this worse than one failing question:
+
+1. **It is the negative half of the `ghusl-necessitate` polarity pair.** Group
+   expansion (§1.3) deliberately includes it, so the filter blocks a chunk the
+   architecture is specifically designed to always supply.
+2. **It presents as a false abstention.** `llm.LLMContentFiltered` now degrades
+   to the §1.7 refusal path, so the user sees "the book does not cover this"
+   about a question the book answers on p19.
+
+**The right fix is the filter policy, not code.** Azure content filters are
+configurable per deployment, and a modified filter can be requested for the
+resource. This is a corporate Vodafone tenant, so it likely needs the platform
+team rather than a portal toggle.
+
+Code mitigations were considered and **not** implemented, because each trades
+away something the design promises: retrying without the blocked chunk would
+silently drop one side of a polarity pair, which is the exact failure §1.3
+exists to prevent. Abstaining loudly is the safer default until the policy is
+changed. Anything built here must make the degradation visible rather than
+quietly answer from half a contrast set.
+
+### Two bugs fixed while running this
+
+- **Thread race in `AzureClient._adapt`** — the parameter-dialect discovery was
+  not thread-safe. With 4 workers, the thread that lost the race found the
+  dialect already corrected, concluded there was nothing left to adapt, and
+  raised a hard failure on a request that would now succeed. Cost Q02/Q03/Q04 of
+  the first run. Now under a lock, and "retry" is returned whenever the
+  rejection names a parameter the client knows how to fix, regardless of which
+  thread fixed it.
+- **`run_eval` aborted the whole run on one question's exception.** A 42-question
+  run died at question ~30 and discarded every result already computed. Failures
+  are now recorded as `error` rows, counted as failures, and reported.
+
+### Still open
+
+- **No independent judge.** Every number above is self-graded by the model under
+  test. `--judge-provider` exists; it needs a second provider with credit.
+- **`MIN_RERANK_SCORE` still 0.74**, still in the 1/512 dead zone (effective
+  0.740234). Q33 ("Do Shafi'i scholars consider bleeding to break wudu?") now
+  rewrites to 0.7266 and correctly still abstains, so the band between
+  should-abstain and answerable has narrowed further — evidence for leaving the
+  threshold alone until the golden set is harder.
+- **Q23/Q24 (`zakah-obligation` variants) omit "a free Muslim"** from the
+  conditions about half the time. Intermittent, so it is a generation-quality
+  issue, not a retrieval one.
+
 ## Environment
 
 - **Path:** `/Users/rifatmahammod/Developer/personal-projects/ai-fiqh`

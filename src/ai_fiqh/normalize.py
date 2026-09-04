@@ -132,9 +132,21 @@ def display_title(s: str) -> str:
 # `fold` handles diacritic variance (wuḍūʾ -> wudu). It cannot handle competing
 # romanisation schemes (wudhu, wuzu), which need an explicit map. Keys and
 # values are already in folded form.
+#
+# **The trailing-h class, added 2026-09-03.** A user asking "How to do Iqama"
+# got no answer: the corpus spells it `iqamah` (20 occurrences), `iqama` was not
+# in the BM25 vocabulary at all, and BM25 fell back to ranking on `how`/`to`/`do`
+# -- which handed the top four slots to "Chapter on how to perform the rituals of
+# Hajj". Dropping a final `h` off an `-ah` ending is one of the most common ways
+# people romanise these words, and every canonical form below was checked to be
+# genuinely present in `text_folded` before being added; an alias pointing at a
+# word the corpus does not contain is worse than no alias, because it silently
+# adds a term that can never match.
 ALIASES: dict[str, str] = {
     # purity
     "wudhu": "wudu", "wuzu": "wudu", "wudoo": "wudu", "ablution": "wudu",
+    "wuzoo": "wudu", "abdest": "wudu", "istinjah": "istinja",
+    "istihada": "istihadah",
     "ghusal": "ghusl", "gusl": "ghusl",
     "tayammom": "tayammum", "tayamum": "tayammum",
     "istinja": "istinja", "najasah": "najasat", "najaasah": "najasat",
@@ -144,29 +156,44 @@ ALIASES: dict[str, str] = {
     # salah
     "salaat": "salah", "salat": "salah", "namaz": "salah", "namaaz": "salah",
     "prayer": "salah", "sajdah": "sajdah", "sajda": "sajdah",
-    "rakat": "rakah", "rakaat": "rakah", "rakah": "rakah", "ruku": "ruku",
+    # `rakah` was a dead target until 2026-09-03: the corpus spells it `rakaah`
+    # (143 occurrences) and `rakah` appears zero times, so all three of these
+    # aliases were expanding queries with a term that could never match.
+    "rakat": "rakaah", "rakaat": "rakaah", "rakah": "rakaah",
+    "rakaah": "rakaah", "rakaahs": "rakaah", "ruku": "ruku",
     "adhaan": "adhan", "azan": "adhan", "iqamah": "iqamah", "iqaamah": "iqamah",
+    "azaan": "adhan", "athan": "adhan", "adaan": "adhan",
+    "iqama": "iqamah", "iqaama": "iqamah", "iqamat": "iqamah",
+    "rukoo": "ruku", "sujood": "sujud", "sajood": "sujud",
+    "takbeer": "takbir", "qibla": "qiblah", "khutba": "khutbah",
+    "musafir": "traveller",
     "witir": "witr", "taraweeh": "tarawih", "taravih": "tarawih",
-    "jumuah": "jumuah", "juma": "jumuah", "jumma": "jumuah",
+    "jumuah": "jumuah", "juma": "jumuah", "jumma": "jumuah", "jumua": "jumuah",
     "janaza": "janazah", "janaazah": "janazah", "funeral": "janazah",
-    "imamah": "imamah", "imaamah": "imamah",
+    "imamah": "imamah", "imaamah": "imamah", "imama": "imamah",
     # fasting
     "sawm": "sawm", "saum": "sawm", "roza": "sawm", "fast": "sawm",
-    "iftaar": "iftar", "suhoor": "sahur", "sehri": "sahur",
+    # Same class of defect: the corpus has `suhur`, never `sahur`.
+    "iftaar": "iftar", "suhoor": "suhur", "sehri": "suhur", "sahur": "suhur",
     "itikaf": "itikaf", "etikaf": "itikaf",
-    "kaffaarah": "kaffarah", "kafarah": "kaffarah",
+    "kaffaarah": "kaffarah", "kafarah": "kaffarah", "kaffara": "kaffarah",
     "qadaa": "qada", "qazaa": "qada",
     # zakah
-    "zakat": "zakah", "zakaat": "zakah", "zakaah": "zakah",
-    "nisaab": "nisab", "sadaqah": "sadaqat", "fitrah": "fitr",
+    "zakat": "zakah", "zakaat": "zakah", "zakaah": "zakah", "zaka": "zakah",
+    "nisaab": "nisab", "sadaqah": "sadaqat", "sadaqa": "sadaqat", "fitrah": "fitr",
     # hajj
     "hajj": "hajj", "haj": "hajj", "umrah": "umrah", "umra": "umrah",
-    "ihraam": "ihram", "tawaaf": "tawaf", "saee": "sai", "saiy": "sai",
+    "ihraam": "ihram", "tawaaf": "tawaf",
+    # `sai` was also dead. The book renders saʿy as `say`, which folding makes
+    # indistinguishable from the English verb (58 hits, mostly "he said"), so
+    # expanding to it would add pure noise. The two proper nouns that pin the
+    # ritual are unambiguous, and a value may carry more than one token.
+    "saee": "safa marwah", "saiy": "safa marwah", "sai": "safa marwah",
     "qiran": "qiran", "tamattu": "tamattu",
     # legal categories
     "fardh": "fard", "farz": "fard", "faraid": "fard", "faraidh": "fard",
     "waajib": "wajib", "waajibaat": "wajib", "wajibat": "wajib",
-    "sunnat": "sunnah", "sunan": "sunnah", "masnun": "sunnah",
+    "sunnat": "sunnah", "sunan": "sunnah", "masnun": "sunnah", "sunna": "sunnah",
     "makruh": "makruh", "makrooh": "makruh", "makroohat": "makruh",
     "mustahab": "mustahab", "mustahabb": "mustahab",
     "adaab": "adab", "aadaab": "adab", "etiquette": "adab",

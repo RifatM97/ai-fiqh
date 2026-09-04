@@ -74,6 +74,15 @@ opposite in law. Contrasting sections share a `group_id`, and retrieval always
 returns the whole group — so the model reads both sides and cannot pick the
 wrong one, because it never picks.
 
+**Retrieval can succeed while the score fails.** The confidence gate compares a
+reranker score against a threshold, and a vaguely-worded question scores low even
+when the correct passage is ranked first. So a score in the grey band just below
+the gate buys one rephrasing: the question — never the corpus — goes to the model,
+which returns a better *search query*, and retrieval runs again. The abstention
+decision is still made in code, on a score, after that returns. The rephrasing is
+shown in the UI, because the book was searched for something other than what was
+typed. Questions scoring below the floor are abstained on without spending a call.
+
 **A plausible answer is indistinguishable from a correct one.** Four independent
 defences, three of them code that keeps working when the model has a bad day:
 resolved citations, a confidence gate that abstains *before* any model call, an

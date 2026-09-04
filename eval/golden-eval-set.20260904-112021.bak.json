@@ -414,27 +414,5 @@
     "reference_answer": "I cannot answer this question because the Ja'fari rulings on wudu are not covered in the provided text.",
     "expected_chunk_ids": [],
     "should_abstain": true
-  },
-  {
-    "id": "Q41",
-    "category": "Polarity trap",
-    "question": "does bleeding from the mouth break wudu?",
-    "expected_behavior": "Real-world false abstention found 2026-09-03. Retrieval succeeded — the reranker put 017-those-things-which-nullify-wudu at #1 (0.7383) with its polarity sibling at #2 (0.7227) — and the layer-2 gate discarded it by 0.0017. Must land on the affirmative side (blood overwhelming saliva nullifies) while acknowledging the contrasting case (blood that does not flow does not), since group expansion puts both in context.",
-    "reference_answer": "Yes. Blood which has overwhelmed the saliva or has equalled it nullifies wudu. By contrast, the mere appearance of blood which does not flow from its place does not break wudu.",
-    "expected_chunk_ids": [
-      "017-those-things-which-nullify-wudu"
-    ],
-    "should_abstain": false
-  },
-  {
-    "id": "Q42",
-    "category": "Straightforward covered",
-    "question": "How to do Iqama",
-    "expected_behavior": "Real-world false abstention found 2026-09-03, scoring 0.6484. Two causes: 'iqama' was absent from the BM25 vocabulary (the corpus spells it 'iqamah'), so keyword search ranked on 'how'/'to'/'do' and returned the Hajj rituals chapter; and the phrasing names the topic rather than the aspect. Should give the manner of calling the iqamah from p33-34.",
-    "reference_answer": "The iqamah is the same as the adhan in all aspects: the takbir is called four times at the beginning, the final takbir is said twice, as are the rest of its words, and there is no tarji' in the shahadatayn. The words 'qad qamati al-salah' are repeated twice after 'hayya 'ala al-falah'. The iqamah is said speedily, whereas the adhan is called out unhurriedly.",
-    "expected_chunk_ids": [
-      "033-adhan"
-    ],
-    "should_abstain": false
   }
 ]

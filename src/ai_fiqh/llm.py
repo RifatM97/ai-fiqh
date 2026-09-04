@@ -25,6 +25,7 @@ told otherwise. `context_tokens` is what `qa.py` budgets against.
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -76,6 +77,19 @@ class LLMUnavailable(LLMError):
 
 class LLMOverloaded(LLMError):
     """Rate limited or transiently overloaded. Retrying later is reasonable."""
+
+
+class LLMContentFiltered(LLMError):
+    """A provider content filter rejected the prompt or the response.
+
+    Not a bug and not a transient failure -- retrying sends the same bytes and
+    gets the same answer. It matters here because the corpus is a fiqh manual:
+    the Book of Purity covers ghusl after intercourse, menstruation and
+    istihadah in clinical detail, and Azure's default filter scores some of
+    those passages `sexual: medium` and refuses the request. The passages are
+    the *source text of the book*, so there is nothing to rephrase; the caller
+    turns this into an abstention rather than a crash.
+    """
 
 
 def load_env() -> None:
@@ -172,6 +186,7 @@ class AzureClient:
         )
         self._token_param = "max_tokens"
         self._send_temperature = True
+        self._dialect_lock = threading.Lock()
 
         from openai import AzureOpenAI
 
@@ -200,14 +215,27 @@ class AzureClient:
         return kw
 
     def _adapt(self, exc: Exception) -> bool:
-        """Learn a deployment's parameter dialect from its rejection. True = retry."""
+        """Learn a deployment's parameter dialect from its rejection. True = retry.
+
+        Thread-safety is the whole subtlety here, and getting it wrong cost three
+        questions of an eval run on 2026-09-04. With several workers sharing one
+        client, two threads hit the same 400 at once; the first corrects the
+        dialect, and the second then found nothing left to change and reported a
+        hard failure -- even though its request would now succeed verbatim.
+
+        So the answer is "retry" whenever the rejection names a parameter this
+        client knows how to correct, whether or not *this* thread is the one that
+        corrected it. `_send` bounds the retries, so a genuinely unfixable
+        rejection still terminates.
+        """
         message = str(exc).lower()
-        if "max_completion_tokens" in message and self._token_param == "max_tokens":
-            self._token_param = "max_completion_tokens"
-            return True
-        if "temperature" in message and self._send_temperature:
-            self._send_temperature = False
-            return True
+        with self._dialect_lock:
+            if "max_completion_tokens" in message:
+                self._token_param = "max_completion_tokens"
+                return True
+            if "temperature" in message:
+                self._send_temperature = False
+                return True
         return False
 
     def _send(self, call, system: str, user: str, max_tokens: int, temperature: float,
@@ -219,6 +247,11 @@ class AzureClient:
                 return call(**self._kwargs(system, user, max_tokens, temperature),
                             **extra)
             except openai.BadRequestError as exc:
+                if _is_content_filter(exc):
+                    raise LLMContentFiltered(
+                        f"Azure content filter rejected the request "
+                        f"({_filter_categories(exc)})."
+                    ) from exc
                 if not self._adapt(exc):
                     raise LLMError(f"Azure rejected the request: {exc}") from exc
             except openai.RateLimitError as exc:
@@ -252,9 +285,17 @@ class AzureClient:
     def complete(
         self, system: str, user: str, *, max_tokens: int, temperature: float = 0.0
     ) -> Completion:
-        response = self._send(
-            self._client.chat.completions.create, system, user, max_tokens, temperature
-        )
+        try:
+            response = self._send(
+                self._client.chat.completions.create, system, user, max_tokens,
+                temperature,
+            )
+        except LLMContentFiltered as exc:
+            # Indistinguishable, from the pipeline's point of view, from a model
+            # declining to answer -- so it takes the same path (§1.7 refusal)
+            # instead of ending the run.
+            return Completion(text="", stop_reason="content_filter", refused=True,
+                              usage={"content_filter": str(exc)})
         choice = response.choices[0]
         message = choice.message
         # A content filter or a model refusal both mean "no answer was produced",
@@ -285,6 +326,26 @@ class AzureClient:
                 f"(finish_reason={response.choices[0].finish_reason})."
             )
         return parsed
+
+
+def _is_content_filter(exc: Exception) -> bool:
+    body = getattr(exc, "body", None) or {}
+    err = body.get("error", {}) if isinstance(body, dict) else {}
+    if err.get("code") == "content_filter":
+        return True
+    return "content_filter" in str(exc) or "ResponsibleAIPolicy" in str(exc)
+
+
+def _filter_categories(exc: Exception) -> str:
+    """Which categories fired, for a message a human can act on."""
+    body = getattr(exc, "body", None) or {}
+    try:
+        results = body["error"]["innererror"]["content_filter_result"]
+        hit = [k for k, v in results.items()
+               if isinstance(v, dict) and (v.get("filtered") or v.get("detected"))]
+        return ", ".join(hit) if hit else "category not reported"
+    except Exception:
+        return "category not reported"
 
 
 # --- Ollama -------------------------------------------------------------------

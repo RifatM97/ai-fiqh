@@ -149,14 +149,19 @@ class Row:
     unverified_pages: list[int] = field(default_factory=list)
     unresolved_markers: list[int] = field(default_factory=list)
     top_score: float = 0.0
+    rewritten_query: str | None = None
+    original_score: float | None = None
     enumeration: bool = False
     seconds: float = 0.0
     answer: str = ""
+    error: str | None = None
 
 
-def run_one(item: dict, retriever: Retriever, client, judge, gate: float) -> Row:
+def run_one(item: dict, retriever: Retriever, client, judge, gate: float,
+            rewrite: bool = True) -> Row:
     started = time.time()
-    ans = qa.answer(item["question"], retriever=retriever, client=client, gate=gate)
+    ans = qa.answer(item["question"], retriever=retriever, client=client, gate=gate,
+                    rewrite=rewrite)
 
     recall = None
     if item["expected_chunk_ids"]:
@@ -193,11 +198,42 @@ def run_one(item: dict, retriever: Retriever, client, judge, gate: float) -> Row
         n_citations=len(ans.citations),
         unverified_pages=ans.unverified_pages,
         unresolved_markers=ans.unresolved_markers,
+        rewritten_query=ans.rewritten_query,
+        original_score=ans.original_score,
         top_score=round(ans.trace.top_score, 4) if ans.trace else 0.0,
         enumeration=ans.enumeration,
         seconds=round(time.time() - started, 1),
         answer=ans.text,
     )
+
+
+def run_one_safe(item: dict, retriever: Retriever, client, judge, gate: float,
+                 rewrite: bool = True) -> Row:
+    """`run_one`, but one question's failure cannot end a 42-question run.
+
+    Added 2026-09-04 after an Azure content filter on a single Book of Purity
+    question aborted an entire eval at question 30-something, discarding every
+    result already computed. A harness that loses a whole run to one bad row is
+    not measuring anything.
+    """
+    try:
+        return run_one(item, retriever, client, judge, gate, rewrite)
+    except Exception as exc:  # noqa: BLE001 -- a harness must survive anything
+        return Row(
+            id=item["id"],
+            category=item["category"],
+            question=item["question"],
+            should_abstain=item["should_abstain"],
+            variant_group=item.get("variant_group"),
+            abstained=False,
+            abstain_reason=None,
+            behaviour_ok=False,
+            verdict="error",
+            verdict_reason=f"{type(exc).__name__}: {exc}"[:300],
+            recall=None,
+            n_citations=0,
+            error=f"{type(exc).__name__}: {exc}"[:300],
+        )
 
 
 # --- reporting ---------------------------------------------------------------
@@ -253,6 +289,22 @@ def report(rows: list[Row], gate: float, stamp: dict) -> dict:
     for name, (num, den) in metrics.items():
         pct = f"{100 * num / den:5.1f}%" if den else "    --"
         print(f"  {name:<28} {num:>3}/{den:<3} {pct}")
+
+    errored = [r for r in rows if r.error]
+    if errored:
+        print(f"\n  !! {len(errored)} question(s) ERRORED and are counted as failures")
+        for r in errored:
+            print(f"      {r.id}  {r.error}")
+
+    rewritten = [r for r in rows if r.rewritten_query]
+    if rewritten:
+        rescued = [r for r in rewritten if not r.abstained]
+        print(f"\n  grey-band rewrite fired on {len(rewritten)}/{len(rows)}; "
+              f"{len(rescued)} then cleared the gate")
+        for r in rewritten:
+            arrow = f"{r.original_score:.4f} -> {r.top_score:.4f}"
+            print(f"      [{'PASS' if not r.abstained else 'still abstained'}] "
+                  f"{r.id} {arrow}  {r.rewritten_query!r}")
 
     false_abstentions = [r for r in answerable if r.abstained]
     print(f"\n  false abstention rate       {len(false_abstentions)}/{len(answerable)}"
@@ -312,6 +364,8 @@ def main() -> None:
     ap.add_argument("--provider", help="override AI_FIQH_LLM_PROVIDER for this run")
     ap.add_argument("--judge-provider",
                     help="grade with a different provider than the one under test")
+    ap.add_argument("--no-rewrite", action="store_true",
+                    help="disable the grey-band query rewrite, to measure against it")
     ap.add_argument("--sweep", action="store_true", help="gate sweep, no model calls")
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
@@ -336,6 +390,7 @@ def main() -> None:
     workers = args.workers if args.workers is not None else client.default_workers
 
     stamp = {
+        "rewrite": not args.no_rewrite,
         "prompt_version": (
             prompts.QA_PROMPT_VERSION
             if client.supports_native_citations
@@ -349,7 +404,11 @@ def main() -> None:
     started = time.time()
     with ThreadPoolExecutor(max_workers=workers) as pool:
         rows = list(
-            pool.map(lambda q: run_one(q, retriever, client, judge, args.gate), golden)
+            pool.map(
+                lambda q: run_one_safe(q, retriever, client, judge, args.gate,
+                                       rewrite=not args.no_rewrite),
+                golden,
+            )
         )
     rows.sort(key=lambda r: r.id)
     print(f"done in {time.time() - started:.0f}s")

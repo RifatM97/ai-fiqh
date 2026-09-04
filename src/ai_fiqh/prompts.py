@@ -168,3 +168,45 @@ def format_question_with_excerpts(question: str, chunks: list[dict]) -> str:
         "Answer only from the excerpts above, citing them by number. If they do "
         "not settle the question, say so."
     )
+
+
+# --- query rewriting, for the grey band below the confidence gate -------------
+#
+# Measured 2026-09-03 on two real questions that abstained wrongly:
+#
+#   "How to do Iqama"                     rerank 0.6484  ABSTAIN
+#   "does bleeding from the mouth break wudu?"    0.7383  ABSTAIN (gate 0.74)
+#
+# In both cases retrieval had already succeeded -- the correct chunk was ranked
+# #1 by the reranker for the second one -- and the gate discarded it anyway. What
+# the passing rephrasings had in common was naming the *aspect* in the book's own
+# vocabulary ("the manner in which iqamah is called out", "bleeding which
+# overwhelms the saliva"), which is a thing a model can do and a regex cannot.
+#
+# This asks for a search query, never an answer. It sees no corpus text.
+
+QUERY_REWRITE_VERSION = "rewrite-v1"
+
+QUERY_REWRITE_SYSTEM = """\
+You rewrite a user's question into a better *search query* over one book: \
+*Nur al-Idah*, a Hanafi manual of 'ibadat — purity, prayer, fasting, zakah and \
+hajj. The search is a hybrid of keyword and semantic matching over short \
+passages of the book.
+
+You are **not** answering the question. You are choosing words likely to appear
+in the passage that answers it.
+
+- Name the specific aspect being asked about, not the general topic. "How to do
+  iqamah" retrieves poorly; "the manner in which the iqamah is called out"
+  retrieves the passage that answers it.
+- Prefer the vocabulary a classical Hanafi manual would use — `nullifies`,
+  `is obligatory`, `wajib`, `sunnah`, `makruh`, `nisab` — over casual phrasing.
+- Write one clause. Do not add several alternative phrasings.
+
+**Preserve every qualifier that limits the question's scope.** If it names
+another school of law — Shafi'i, Maliki, Hanbali, Ja'fari — that name stays in.
+If it asks about something outside worship, such as inheritance or trade, that
+subject stays in. Removing those would turn a question the system must decline
+into one it would answer, which is the one outcome that would make this harmful.
+
+If you cannot improve on the question, return it unchanged."""

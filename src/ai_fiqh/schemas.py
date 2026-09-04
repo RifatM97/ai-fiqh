@@ -108,3 +108,14 @@ class ValidationFailure(BaseModel):
 
     check: str
     detail: str
+
+
+class RewrittenQuery(BaseModel):
+    """A retrieval-only rephrasing of a user question (`qa.rewrite_query`).
+
+    Deliberately a schema rather than a bare string completion: a small model
+    asked for "just the query" will sooner or later prepend "Sure, here is a
+    better search query:", and that preamble would be searched for verbatim.
+    """
+
+    query: str = Field(description="The rewritten search query, one clause")
