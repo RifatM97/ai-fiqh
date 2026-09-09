@@ -5,7 +5,12 @@
 
 > Sections marked **implemented** are a record of what was built and verified,
 > not a plan. Where the data contradicted the original design, the original
-> claim is left in place with a **Correction** beneath it — §1.2.1, §1.3, §1.6.
+> claim is left in place with a **Correction** beneath it — §1.2.1, §1.3, §1.6,
+> §1.7, §4.
+>
+> The two corrections in §1.7 are the substantial ones. Layer 1 was rebuilt when
+> the project moved off Anthropic (2026-09-02), and layer 2's premise did not
+> survive contact with questions the author had not written (2026-09-04).
 
 Decisions locked before writing (see [PROJECT_TRACKER.md](PROJECT_TRACKER.md)):
 Hanafi, `ibadat` only, Nur al-Idah as sole authority, `uv`.
@@ -212,13 +217,47 @@ The top failure mode: the model answers from pretrained knowledge of *another ma
 
 Note the constraint: **citations are incompatible with `output_config.format`** (structured outputs) — the combination returns a 400. Pick one per call. Given the choice, citations win for the Q&A path; use structured outputs for the revision path, which doesn't need them.
 
+> **Correction (2026-09-02).** The project moved off Anthropic to Azure OpenAI, and API-native citations are an Anthropic feature with no equivalent elsewhere — Azure's only comparable offering is "On Your Data", which requires putting the corpus into Azure AI Search and would replace the entire retrieval pipeline described in §1.5.
+>
+> Layer 1 is now **numbered excerpts and `[n]` markers**, resolved back to chunks in code by `qa.resolve_markers`. Be clear about what was lost: the original was a *structural* guarantee — a citation object could not name a document that was not supplied. The replacement is a *checked* guarantee — the model can write `[9]` over five excerpts, and code catches it and reports it as `unresolved_markers`. Weaker in kind, not just in degree.
+>
+> A second loss worth recording: a native citation carries the *source span* it quotes. A marker is only a number, so `cited_text` now carries the **claim** the marker is attached to instead. Useful to a reader checking an answer, but it is not the same field.
+>
+> The Anthropic implementation is kept runnable behind `AI_FIQH_LLM_PROVIDER=anthropic` precisely so the replacement has something to be measured against.
+
 **Layer 2 — retrieval confidence gate.** If the top reranked score falls below a tuned threshold, do not call the model at all. Return "Nur al-Idah does not appear to cover this." Abstention as control flow, not as model behaviour.
+
+> **Correction (2026-09-04) — the gate measures phrasing, not answerability.**
+>
+> The premise above is that a reranker score is a usable proxy for "is this question answerable from this corpus". Measurement says it is not. Three phrasings of one question, all retrieving the *same* chunk (`014-the-sunan-of-wudu`) at the *same* rank #1 with the same neighbours:
+>
+> | phrasing | rerank | verdict |
+> |---|---|---|
+> | "…don't wash each limb **straightaway after the other**?" | 0.7227 | ABSTAIN |
+> | "…don't wash each limb **consecutively**?" | 0.7070 | ABSTAIN |
+> | "…don't wash each limb **immediately after another**?" | **0.7734** | **PASS** |
+>
+> The book's own line is `13) To wash each limb immediately after another (in quick succession)`. **The phrasing that passes is a near-verbatim echo of the source.** Retrieval never varied; only the score did.
+>
+> **The classes are not separable by any threshold.** Lowest genuinely-answerable score observed is **0.7070**; highest should-abstain score observed is **0.7266** (Q33, cross-madhhab bait, after rewriting). They overlap. This is stronger than "0.74 is mistuned" — no threshold admits the answerable cases and excludes the bait.
+>
+> **Why.** A cross-encoder is trained to answer *"is A more relevant than B for this query"* — an **ordinal** judgement whose scale is query-dependent. It is not trained to answer *"is this query answerable from this corpus"*. Layer 2 uses an ordinal ranking signal as a calibrated probability, which is a category error, and swapping one synonym moves it.
+>
+> **What survives.** The gate is reliable at the extremes and guessing in the middle: below ~0.60 it is trustworthy (all 8 out-of-scope questions sit here, median 0.5586), above ~0.78 it is trustworthy, and 0.60–0.78 is the band where it cannot discriminate — while containing a large share of naturally-worded real questions.
+>
+> Two smaller defects found alongside it. `rerank-2.5` quantizes scores to 1/512, and `0.74` falls between the representable 0.738281 and 0.740234, so **the effective gate is 0.740234 and the constant does not mean what it says**. And a missing BM25 alias (`iqama` vs the corpus's `iqamah`) can drop the keyword arm to zero on the query's only content word — see §1.4, which anticipated the class but not the specific gap.
+>
+> **Mitigation shipped, not a fix:** a grey-band query rewrite (score in `[0.60, gate)` buys one model call to rephrase the *query*, then retrieval runs again). It fixed two of three known cases. The structural options — multi-query retrieval with RRF fusion, a margin-based rather than absolute signal, or routing the grey band to layer 3 — remain open. See the tracker.
+>
+> **The trade-off was also stated too comfortably.** False abstention reads as the safe failure because nothing untrue is asserted. But telling a user the book does not address a ruling that is on p14 teaches them something false *about the book*, and spends the credibility that makes the correct abstentions worth having. It belongs alongside abstention rate as a first-class metric, not as the acceptable side of a dial.
 
 **Layer 3 — system prompt with an explicit authority boundary.** State that Nur al-Idah is the sole authority, that the assistant is Hanafi-only, that it must abstain rather than generalize, and that it must defer to a qualified scholar on anything consequential. Give it explicit permission to say "I don't know" — models abstain far more readily when abstention is framed as a correct answer rather than a failure.
 
 **Layer 4 — programmatic citation verification.** After generation, check that every page number the model cited actually appears in the chunks that were retrieved. A citation to a page that wasn't in context is a hallucination, detectable without a human. Log it, and surface it as a warning in the notebook.
 
 Layers 2 and 4 are code, not prompting. That's deliberate — they're the ones that keep working when the model has a bad day.
+
+> **Correction (2026-09-04).** Still true, and still the right instinct — but it was an argument about *availability*, and it was read as one about *accuracy*. Layer 4 holds unconditionally: it compares cited pages against supplied pages, and that comparison cannot be wrong. Layer 2 holds only as far as its input signal is trustworthy, and per the correction above that signal is unreliable across a wide middle band. A code layer is not automatically a correct layer.
 
 ---
 
@@ -475,6 +514,28 @@ The tracker's open question #9. This is the part most easily skipped and most ne
 - **Polarity accuracy** — on polarity-trap questions specifically.
 
 Those last two are the tuning dial. The confidence gate trades them against each other directly; pick a threshold by running the sweep, not by intuition.
+
+> **Correction (2026-09-04) — the golden set shares the corpus's vocabulary.**
+>
+> "Pick a threshold by running the sweep, not by intuition" is right, and it is not enough: a sweep can only be as good as the set it sweeps over. This one was hand-written by someone who **had read the book**, so its questions speak the book's language — *"What are the obligatory acts of ghusl?"*, *"Does sleeping firmly seated break wudu?"*. That is exactly the phrasing §1.7's gate rewards, so the gate looked well-calibrated because the set and the corpus shared a vocabulary.
+>
+> The gap this hid:
+>
+> | | false abstention rate |
+> |---|---|
+> | 40-question golden set | **1/26** |
+> | questions the author asked spontaneously | **3/3** |
+>
+> Every unprompted real question hit a false abstention — the iqamah method, mouth bleeding, and washing limbs in succession. The set was measuring the retriever against a user who already knew the answer.
+>
+> Two consequences for how this section should be read:
+>
+> 1. **The metrics were sound; the sample was not.** No metric above is wrong. They were computed over a distribution that does not resemble use.
+> 2. **A saturated set cannot be tuned against.** The tracker flagged 40/40 as suspicious from the start. The correct response is a golden set written by people who have *not* read the book, and until that exists, threshold changes should not be justified from these numbers.
+>
+> **Reproducibility, measured 2026-09-04.** Two *identical* eval runs on `azure/gpt-5.4` scored 39/42 and 40/42, with two questions flipping verdict on byte-identical retrieval. `temperature=0.0` is accepted and does not make the model deterministic. So **the harness carries ±1–2 questions of noise**, a single run cannot resolve a small difference, and the retrieval-determined metrics (recall@context, false abstention) are the stable ones to judge changes on — not `behaviour`.
+>
+> **The judge is not independent.** With Anthropic credit exhausted, the grader is the same deployment as the model under test. `run_eval.py` prints a warning on every such run, and `--judge-provider` exists for when a second provider is available. Self-graded numbers are not comparable with independently graded ones.
 
 For revision mode, evaluate the **validators** (§2.3) rather than the output: what fraction of generated MCQs pass all four checks on first generation? A low rate means the distractor pool construction is wrong, not that Claude is bad at the task.
 

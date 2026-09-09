@@ -1,9 +1,13 @@
 # AI-Fiqh — Project Tracker
 
-**Last updated:** 2026-08-05
+**Last updated:** 2026-09-04
 **Phase:** Build order complete — all ten steps of research.md §6 are done,
-including the Streamlit UI. Remaining work is quality/hardening, not new
-components; see *Still open* and *Next steps* below.
+including the Streamlit UI. No new components are outstanding, but "quality
+hardening" now understates what is open: **the confidence gate (§1.7 layer 2)
+does not work on questions phrased the way real users phrase them, and the
+golden set cannot measure that because it shares the corpus's vocabulary.**
+Read *2026-09-04 (cont.)* before trusting any eval number in this file. See
+*Still open* and *Next steps*.
 
 ---
 
@@ -31,7 +35,12 @@ components; see *Still open* and *Next steps* below.
 | `notebooks/explore.ipynb` | Done ✅ — 26 cells / 8 sections, committed unexecuted (§1–3 verified run, §4–7 verified on an earlier execution) |
 | `retrieve.py` | **Dropped ✅** — never needed; §2.2's primitives are `Retriever.search` / `Retriever.get_section` |
 | `revision.py` / `schemas.py` | Done ✅ — MCQs with corpus-drawn distractors, flashcards, `build_deck` for Zakah/Hajj |
-| `app.py` — Streamlit UI (§2.1) | Done ✅ — **build order complete**, verified end-to-end via `AppTest`, uncommitted |
+| `app.py` — Streamlit UI (§2.1) | Done ✅ — **build order complete**, verified end-to-end via `AppTest` |
+| `llm.py` — provider abstraction | Done ✅ 2026-09-02 — Azure OpenAI (default), Ollama, Anthropic |
+| §1.7 layer 1 — citations | **Rebuilt** ⚠️ 2026-09-02 — `[n]` markers resolved in code; weaker than the API-native guarantee it replaced |
+| §1.7 layer 2 — confidence gate | **Not sound** ❌ 2026-09-04 — scores phrasing, not answerability; classes do not separate under any threshold |
+| Golden set | 42 questions ⚠️ — shares the corpus's vocabulary, so it cannot measure the gate's real failure mode |
+| Azure content filter | **Blocking** ❌ — `019-things-which-do-not-necessitate-ghusl` (p19) rejected; a custom filter did not resolve it |
 
 ### Ingestion results (2026-07-30)
 
@@ -679,6 +688,23 @@ configurable per deployment, and a modified filter can be requested for the
 resource. This is a corporate Vodafone tenant, so it likely needs the platform
 team rather than a portal toggle.
 
+> **Update, same day: a custom content filter was created and Q01 is still
+> blocked.** So this is not a matter of loosening severity thresholds on the
+> deployment. Remaining possibilities, in the order worth trying:
+>
+> 1. The custom filter is defined but **not attached to this deployment** —
+>   filters are assigned per-deployment, and creating one does not apply it.
+> 2. The `sexual` category's **prompt-side** threshold specifically was not
+>   raised, or is capped by tenant policy. The 400 named `param: prompt`, so an
+>   output-side change alone will not help.
+> 3. On a managed corporate tenant the maximum severity may be **policy-locked**
+>   above what this corpus needs, in which case no self-service configuration
+>   resolves it and it becomes a request to the platform team — or a reason to
+>   route the Book of Purity to a provider without the filter.
+>
+> Until then Q01 fails deterministically on every eval run and should be read as
+> a known infrastructure failure, not a pipeline regression.
+
 Code mitigations were considered and **not** implemented, because each trades
 away something the design promises: retrying without the blocked chunk would
 silently drop one side of a polarity pair, which is the exact failure §1.3
@@ -711,6 +737,107 @@ quietly answer from half a contrast set.
 - **Q23/Q24 (`zakah-obligation` variants) omit "a free Muslim"** from the
   conditions about half the time. Intermittent, so it is a generation-quality
   issue, not a retrieval one.
+
+## 2026-09-04 (cont.) — ⚑ the confidence gate measures phrasing, not answerability
+
+The sharpest experiment in `notebooks/explore.ipynb` §8 (Q3). It supersedes the
+"false abstention" framing of the two entries above: those looked like a
+threshold that needed nudging. This one shows the threshold cannot be fixed.
+
+### The experiment
+
+Three phrasings of one question. **Identical retrieval every time** —
+`014-the-sunan-of-wudu` at rank #1, same neighbours, same order. Only the score
+moved:
+
+| phrasing | rerank | verdict |
+|---|---|---|
+| "…don't wash each limb **straightaway after the other**?" | 0.7227 | ABSTAIN |
+| "…don't wash each limb **consecutively**?" | 0.7070 | ABSTAIN |
+| "…don't wash each limb **immediately after another**?" | **0.7734** | **PASS** |
+
+The book's line reads:
+
+> `13) To wash each limb immediately after another (in quick succession)`
+
+**The phrasing that passes is a near-verbatim echo of the source.** Nothing about
+finding the answer changed between the three runs; the gate is scoring lexical
+proximity to the passage and calling it confidence.
+
+### The classes no longer separate
+
+| | score |
+|---|---|
+| lowest genuinely **answerable** observed | **0.7070** ("consecutively") |
+| highest **should-abstain** observed | **0.7266** (Q33 cross-madhhab, post-rewrite) |
+
+They overlap. **No threshold admits the answerable cases while excluding the
+bait.** This is a stronger claim than "0.74 is mistuned" and it should be treated
+as such: `MIN_RERANK_SCORE` is not a number waiting to be retuned.
+
+**Root cause.** A cross-encoder is trained for an *ordinal* judgement — "is A
+more relevant than B for this query" — on a scale that shifts per query. It is
+not trained to answer "is this query answerable from this corpus". Layer 2 reads
+an ordinal ranking signal as a calibrated probability. Swapping one synonym moves
+it, which is exactly what the table above shows.
+
+### Why the golden set never caught this
+
+The 40 original questions were hand-written by someone who **had read the book**,
+so they speak its language — which is precisely the phrasing the gate rewards.
+
+| | false abstention rate |
+|---|---|
+| 40-question golden set | **1/26** |
+| questions asked spontaneously | **3/3** |
+
+Every unprompted question failed: the iqamah method, mouth bleeding, and now
+washing limbs in succession. The set was measuring the retriever against a user
+who already knew the answer. **This is now the most load-bearing open item in the
+project** — every threshold decision depends on a set that cannot support one.
+
+### Where the gate still earns its place
+
+Not useless — reliable at the extremes, guessing in the middle:
+
+| band | verdict |
+|---|---|
+| below ~0.60 | trustworthy — all 8 out-of-scope questions sit here, median 0.5586 |
+| 0.60 – 0.78 | **guessing**, and contains a large share of naturally-worded real questions |
+| above ~0.78 | trustworthy |
+
+The grey-band rewrite already shipped covers part of the middle. It is a
+mitigation, not a fix.
+
+### Options, none implemented
+
+1. **Multi-query retrieval.** Generate 2–3 paraphrases up front, retrieve for all,
+   fuse with the RRF that already exists, gate on the best. Attacks phrasing
+   sensitivity structurally rather than repairing one query after it has already
+   failed. Most principled, and the closest fit to the current architecture.
+2. **A relative signal instead of an absolute one** — margin between #1 and the
+   tail, or the score normalised by that query's own distribution. Scale-free, so
+   a synonym swap does not move it. Still needs calibration, but against
+   something stable.
+3. **Route the grey band to layer 3.** The authority prompt already frames "I
+   don't know" as a correct answer. Keeps the code gate where it is reliable
+   (below 0.60) and stops asking it to adjudicate where it cannot.
+4. **Rebuild the golden set from questions written by people who have not read
+   the book.** Upstream of the other three — none of them can be calibrated
+   against a set that shares the corpus's vocabulary.
+
+### A framing correction worth keeping
+
+False abstention has been treated as the safe failure, on the grounds that
+nothing untrue is asserted. That is too comfortable. Telling a user
+*"Nur al-Idah does not appear to address this"* about a ruling printed on p14
+teaches them something false **about the book**, and spends the credibility that
+makes the correct abstentions worth having. A system that abstains on three of
+the first three real questions does not stay in use long enough to be trusted on
+the cross-madhhab ones.
+
+Recorded as corrections in `research.md` §1.7 (layer 2, and the "layers 2 and 4
+are code" claim) and §4.
 
 ## Environment
 
@@ -1227,8 +1354,22 @@ components:
   Currently only on disk.
 - **Merge the remaining 20 of the 30 xlsx content questions** into the JSON
   golden set (see *Golden eval set* above).
-- **Harden the golden set** — it's saturated (see *Open questions added
-  2026-08-04*); add harder/ambiguous/terse cases, prioritising Hajj.
+- **⚑⚑ Rebuild the golden set from questions written by people who have NOT read
+  the book.** Promoted 2026-09-04 to the most load-bearing open item in the
+  project. It is no longer just "saturated": the set shares the corpus's
+  vocabulary, which is the exact property §1.7's gate rewards, so it cannot
+  measure the failure mode that matters — 1/26 false abstention on the set
+  against 3/3 on questions asked spontaneously. **Every threshold decision
+  depends on this, and none of the gate options below can be calibrated until it
+  exists.** Still also add harder/ambiguous/terse cases, prioritising Hajj.
+- **Decide what replaces the absolute confidence gate** (see *2026-09-04 (cont.)*
+  — the classes provably do not separate under any threshold). Four options
+  recorded there: multi-query retrieval with RRF fusion, a margin-based signal,
+  routing the grey band to layer 3, or some combination. Do not retune
+  `MIN_RERANK_SCORE` as if it were a tuning problem.
+- **Azure content filter blocks `019-things-which-do-not-necessitate-ghusl`** —
+  a custom filter did not resolve it. See the update in *2026-09-04* above for
+  the three remaining avenues.
 - **`sawm-kaffarah` variant group** — split Q20 out or redefine the metric on
   recall (see *Open questions added 2026-08-04*).
 - **⚑ Zakah/Hajj MCQ coverage — draft ready, awaiting your fiqh review.**
