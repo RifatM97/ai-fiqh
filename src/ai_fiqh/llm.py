@@ -36,6 +36,19 @@ ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_PROVIDER = "azure"
 
+# Optional second provider, used *only* when the primary's content moderation
+# refuses. Empty disables the mechanism, so nothing changes unless opted in.
+#
+# Why this exists: the corpus is a manual of ritual purity. It covers ghusl after
+# intercourse, menstruation, istihadah, madhi and wadi -- in the clinical register
+# a 17th-century jurist would use. Azure's filter scores
+# `019-things-which-do-not-necessitate-ghusl` (p19) as `sexual: medium` and
+# rejects the whole prompt, including after a custom filter was configured
+# (2026-09-10). That is a structural mismatch between classical fiqh vocabulary
+# and commercial content moderation, not a threshold waiting to be tuned, and it
+# made the system report that the book does not cover rulings printed in it.
+FALLBACK_PROVIDER_VAR = "AI_FIQH_LLM_FALLBACK_PROVIDER"
+
 # Azure. Deployment names are chosen by whoever created the resource, so nothing
 # about the underlying model can be inferred from them -- see `_AzureClient` for
 # how the parameter differences are discovered instead of guessed.
@@ -43,10 +56,45 @@ AZURE_API_VERSION = "2024-10-21"  # first GA version with strict structured outp
 AZURE_CONTEXT_TOKENS = 128_000
 
 # Ollama. `num_ctx` is the load-bearing one: the server default is 2,048, so a
-# retrieval context that fits gemma2's 8,192 window is still truncated in half
-# without this -- silently, with no error and no warning in the response.
-OLLAMA_MODEL = "gemma2:9b"
-OLLAMA_CONTEXT_TOKENS = 8_192
+# retrieval context that fits the model's window is still truncated without this
+# -- silently, with no error and no warning in the response.
+OLLAMA_MODEL = "gemma4:12b"
+
+# **Not** the model's maximum, and sized against measurement rather than taste.
+# gemma4:12b advertises 262,144 tokens; 32,768 was tried first and pushed an 18GB
+# M3 Pro to 9.6GB of swap with the model resident, which made a single question
+# take minutes.
+#
+# What the workload actually needs: the largest excerpt set this corpus can
+# produce is the §2.2 enumeration path merging the Hajj rituals section, ~9,500
+# tokens. Against 16,384 the budget in `qa.fit_to_context` works out at roughly
+# 11,000 tokens for excerpts once the authority prompt, the answer ceiling and the
+# thinking reserve are subtracted -- so nothing is trimmed, with margin, at half
+# the KV cache. Raise it only with a measurement.
+OLLAMA_CONTEXT_TOKENS = 16_384
+
+# gemma4 is a reasoning model: it returns `thinking` alongside `content`, and
+# `num_predict` caps the two together. A ceiling sized for the answer alone gets
+# spent entirely on reasoning and returns empty content with
+# `done_reason="length"` -- which is how this was found, at 14,668 characters
+# (~4,200 tokens) of reasoning on a single wudu question.
+#
+# Thinking is **off by default**, which is a budget decision rather than a view
+# about reasoning. Two constraints make it expensive here:
+#
+#   * It competes with the excerpts for the same window. A reserve large enough
+#     for ~4,200 tokens of reasoning takes roughly 3,000 tokens off the excerpt
+#     budget at a 16K context, which is enough to start trimming the §2.2
+#     enumeration path -- paying for the model to think by giving it less of the
+#     book to think about is the wrong trade.
+#   * On a memory-constrained machine it multiplies latency, and the Ollama path
+#     exists mainly as the content-filter fallback, where the alternative is no
+#     answer at all.
+#
+# Set OLLAMA_THINK=1 to turn it back on; the reserve below is then applied and
+# OLLAMA_CONTEXT_TOKENS should be raised to match if the machine has the headroom.
+OLLAMA_THINK = False
+OLLAMA_THINKING_RESERVE = 6_144
 
 ANTHROPIC_MODEL = "claude-opus-5"
 ANTHROPIC_CONTEXT_TOKENS = 200_000
@@ -125,6 +173,11 @@ class Completion:
     stop_reason: str | None = None
     refused: bool = False
     usage: dict[str, Any] = field(default_factory=dict)
+    # Set by `FallbackClient` when a content filter on the primary provider sent
+    # the request elsewhere. `qa.Answer` carries it through to the UI -- a reader
+    # is entitled to know a different model answered.
+    answered_by: str | None = None
+    fallback_used: bool = False
 
 
 class LLMClient(Protocol):
@@ -368,7 +421,6 @@ class OllamaClient:
     provider = "ollama"
     supports_native_citations = False
     default_workers = 1
-    thinking_reserve = 0
 
     def __init__(self, *, model: str | None = None) -> None:
         load_env()
@@ -376,6 +428,17 @@ class OllamaClient:
         self.context_tokens = int(
             os.environ.get("OLLAMA_CONTEXT_TOKENS", OLLAMA_CONTEXT_TOKENS)
         )
+        self.think = (
+            os.environ.get("OLLAMA_THINK", "1" if OLLAMA_THINK else "0")
+            .strip().lower() in ("1", "true", "yes", "on")
+        )
+        # Nothing to reserve when the model is not going to think.
+        self.thinking_reserve = (
+            int(os.environ.get("OLLAMA_THINKING_RESERVE", OLLAMA_THINKING_RESERVE))
+            if self.think
+            else 0
+        )
+        self._send_think = True  # cleared if the server rejects the parameter
         try:
             import ollama
         except ModuleNotFoundError as exc:  # pragma: no cover
@@ -385,21 +448,34 @@ class OllamaClient:
 
     def _chat(self, system: str, user: str, max_tokens: int, temperature: float,
               fmt: Any = None) -> Any:
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "format": fmt,
+            "options": {
+                "num_ctx": self.context_tokens,
+                "num_predict": max_tokens,
+                "temperature": temperature,
+            },
+        }
+        # Older servers and non-reasoning models reject `think` outright, so it is
+        # dropped on the first rejection rather than version-sniffed.
+        if self._send_think:
+            kwargs["think"] = self.think
         try:
-            return self._client.chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                format=fmt,
-                options={
-                    "num_ctx": self.context_tokens,
-                    "num_predict": max_tokens,
-                    "temperature": temperature,
-                },
-            )
+            return self._client.chat(**kwargs)
+        except TypeError:
+            self._send_think = False
+            kwargs.pop("think", None)
+            return self._client.chat(**kwargs)
         except self._ollama.ResponseError as exc:
+            if "think" in str(exc).lower() and self._send_think:
+                self._send_think = False
+                kwargs.pop("think", None)
+                return self._client.chat(**kwargs)
             if exc.status_code == 404:
                 raise LLMUnavailable(
                     f"model {self.model!r} is not pulled — run "
@@ -423,10 +499,22 @@ class OllamaClient:
         self, system: str, user: str, *, max_tokens: int, temperature: float = 0.0
     ) -> Completion:
         response = self._chat(system, user, max_tokens, temperature)
+        message = response["message"]
+        text = (message.get("content") or "").strip()
+        if not text and response.get("done_reason") == "length":
+            # A reasoning model that spent the whole ceiling on `thinking`. Silent
+            # empty answers are worse than a loud failure here, because the
+            # pipeline would read one as "the model had nothing to say".
+            thought = len(message.get("thinking") or "")
+            raise LLMError(
+                f"{self.model} produced no answer: the {max_tokens}-token ceiling "
+                f"was consumed by reasoning ({thought} chars of it). Raise "
+                f"OLLAMA_THINKING_RESERVE."
+            )
         return Completion(
-            text=(response["message"]["content"] or "").strip(),
+            text=text,
             stop_reason=response.get("done_reason"),
-            refused=False,  # local models have no separate refusal signal
+            refused=False,  # local models have no content filter and no refusal signal
             usage=self._usage(response),
         )
 
@@ -593,6 +681,83 @@ class AnthropicClient:
         return response.parsed_output
 
 
+# --- content-filter fallback --------------------------------------------------
+
+
+class FallbackClient:
+    """A primary provider, plus a second one used only when moderation refuses.
+
+    Deliberately narrow. It does **not** fall back on rate limits, outages, or
+    bad requests -- those are transient or are real bugs, and silently answering
+    them from a different model would hide both. It fires on exactly one
+    condition: the primary returned a content-filter refusal, which is
+    permanent, reproducible, and not the user's fault.
+
+    Three invariants make a shared prompt safe to send to either provider:
+
+    * **Citation style must match.** Native citations and `[n]` markers need
+      different prompts and different parsing, so mixing the two would mean the
+      fallback received a prompt built for the other scheme. Construction fails
+      rather than allowing it.
+    * **Context is budgeted against the smaller window.** The prompt is built
+      once, before anyone knows which provider will answer it, so it has to fit
+      the narrower of the two -- 32K for Ollama against Azure's 128K.
+    * **The token ceiling is the larger reserve.** `num_predict` is a ceiling,
+      not a target, so being generous costs a non-reasoning model nothing and
+      stops a reasoning model spending the whole budget on `thinking`.
+    """
+
+    def __init__(self, primary: Any, fallback: Any) -> None:
+        if primary.supports_native_citations != fallback.supports_native_citations:
+            raise LLMConfigError(
+                f"cannot pair {primary.provider!r} with {fallback.provider!r}: they "
+                f"disagree on native citations, so one would receive a prompt built "
+                f"for the other's citation scheme."
+            )
+        self.primary = primary
+        self.fallback = fallback
+        self.provider = primary.provider
+        self.model = primary.model
+        self.supports_native_citations = primary.supports_native_citations
+        self.default_workers = primary.default_workers
+        self.context_tokens = min(primary.context_tokens, fallback.context_tokens)
+        self.thinking_reserve = max(primary.thinking_reserve, fallback.thinking_reserve)
+
+    @staticmethod
+    def _filtered(completion: Completion) -> bool:
+        return completion.stop_reason == "content_filter"
+
+    def complete(
+        self, system: str, user: str, *, max_tokens: int, temperature: float = 0.0
+    ) -> Completion:
+        out = self.primary.complete(
+            system, user, max_tokens=max_tokens, temperature=temperature
+        )
+        if not self._filtered(out):
+            out.answered_by = describe(self.primary)
+            return out
+
+        out = self.fallback.complete(
+            system, user, max_tokens=max_tokens, temperature=temperature
+        )
+        out.answered_by = describe(self.fallback)
+        out.fallback_used = True
+        return out
+
+    def parse[T: BaseModel](
+        self, system: str, user: str, schema: type[T], *, max_tokens: int
+    ) -> T:
+        try:
+            return self.primary.parse(system, user, schema, max_tokens=max_tokens)
+        except LLMContentFiltered:
+            return self.fallback.parse(system, user, schema, max_tokens=max_tokens)
+
+    def cited_complete(self, *args, **kwargs):
+        # Only reachable when both providers support native citations, i.e. both
+        # are Anthropic, which the selection logic never builds.
+        return self.primary.cited_complete(*args, **kwargs)
+
+
 # --- selection ----------------------------------------------------------------
 
 _BUILDERS = {
@@ -613,12 +778,35 @@ def active_provider() -> str:
     return name
 
 
-def get_client(provider: str | None = None, **kwargs) -> LLMClient:
-    """The configured client. Constructed per caller — these are cheap and thread-safe."""
+def fallback_provider() -> str | None:
+    """The configured content-filter fallback, if any."""
+    load_env()
+    name = (os.environ.get(FALLBACK_PROVIDER_VAR) or "").strip().lower()
+    return name or None
+
+
+def get_client(provider: str | None = None, *, fallback: bool = True, **kwargs) -> LLMClient:
+    """The configured client. Constructed per caller — these are cheap and thread-safe.
+
+    Wrapped in a `FallbackClient` when a fallback provider is configured and the
+    caller did not name a provider explicitly. Naming one means "use this and
+    nothing else", which is what the eval harness's `--provider` needs.
+    """
+    explicit = provider is not None
     name = (provider or active_provider()).strip().lower()
     if name not in _BUILDERS:
         raise LLMConfigError(f"unknown provider {name!r}.")
-    return _BUILDERS[name](**kwargs)
+    client = _BUILDERS[name](**kwargs)
+
+    second = fallback_provider() if (fallback and not explicit) else None
+    if second and second != name:
+        if second not in _BUILDERS:
+            raise LLMConfigError(
+                f"{FALLBACK_PROVIDER_VAR}={second!r} is not one of "
+                f"{', '.join(sorted(_BUILDERS))}."
+            )
+        return FallbackClient(client, _BUILDERS[second]())
+    return client
 
 
 def describe(client: LLMClient) -> str:

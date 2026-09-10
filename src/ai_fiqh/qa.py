@@ -122,6 +122,11 @@ class Answer:
     prompt_version: str = prompts.QA_PROMPT_VERSION
     provider: str = ""
     model: str = ""
+    # Which model actually produced the text. Differs from `model` when the
+    # primary provider's content filter refused and a fallback answered instead
+    # (§ llm.FallbackClient) -- a reader is entitled to know that happened.
+    answered_by: str | None = None
+    fallback_used: bool = False
 
     @property
     def pages_in_context(self) -> set[int]:
@@ -160,6 +165,9 @@ class Answer:
             after = f" -> {self.trace.top_score:.4f}" if self.trace else ""
             print(f"\nretrieval used a rewritten query: {self.rewritten_query!r}"
                   f"  (score {self.original_score:.4f}{after})")
+        if self.fallback_used:
+            print(f"\n!! answered by {self.answered_by} — the primary provider's "
+                  f"content filter refused this prompt")
         print(f"\ncontext: {len(self.chunks)} chunks, pages "
               f"{sorted(self.pages_in_context)}")
 
@@ -506,6 +514,8 @@ def answer(
         unverified_pages=verify_citations(completion.text, chunks),  # Layer 4
         unresolved_markers=unresolved,
         context_dropped=dropped,
+        answered_by=completion.answered_by or llm.describe(client),
+        fallback_used=completion.fallback_used,
         rewritten_query=rewritten_query,
         original_score=original_score,
         stop_reason=completion.stop_reason,

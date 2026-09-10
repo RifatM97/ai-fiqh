@@ -259,6 +259,29 @@ Layers 2 and 4 are code, not prompting. That's deliberate — they're the ones t
 
 > **Correction (2026-09-04).** Still true, and still the right instinct — but it was an argument about *availability*, and it was read as one about *accuracy*. Layer 4 holds unconditionally: it compares cited pages against supplied pages, and that comparison cannot be wrong. Layer 2 holds only as far as its input signal is trustworthy, and per the correction above that signal is unreliable across a wide middle band. A code layer is not automatically a correct layer.
 
+> **Correction (2026-09-10) — a fifth failure mode this section never anticipated: the provider refusing the source.**
+>
+> §1.7 assumes every failure is the model asserting too much. A hosted provider can also assert too little — refusing to process the book at all. Azure OpenAI's content filter rejects passages of *Nur al-Idah* outright, `400 content_filter` with `param: prompt`, meaning **the book's own text** is refused rather than the question or the answer.
+>
+> Every one of the 177 chunks was sent individually to measure the real extent. **Two are refused, both under `violence`, and both are plainly false positives:**
+>
+> | chunk | pages | what trips it |
+> |---|---|---|
+> | `083-jumuah-p1` | 84–86 | "(to stand) **without a sword** in those lands which were **conquered** through a truce" — in a chapter on Friday-sermon etiquette |
+> | `138-…rituals-of-hajj-p4` | 142–143 | "**stone** from the centre of the valley using seven **pebble-like stones**" — the ramy al-jamarāt |
+>
+> A classifier is refusing the stoning of the Jamarāt, which is a pillar ritual of Hajj, and a ruling about whether a preacher holds a sword. An earlier `sexual: medium` refusal of `019-things-which-do-not-necessitate-ghusl` was fixed by a custom filter policy on the deployment; the `violence` category was not.
+>
+> **Why this belongs in §1.7 rather than in a deployment note.** The refusal arrives on the same path as a model refusal, so it surfaces as an abstention — the system says *"Nur al-Idah does not appear to address this"* about a ruling printed on p142. That is layer 2's failure mode (a false statement about the book) produced by infrastructure rather than by a score, and it is indistinguishable from the real thing to a reader.
+>
+> **Resolution: a narrow second provider.** `llm.FallbackClient` retries the identical prompt on a local model when, and only when, the primary returns a content-filter refusal. Deliberately *not* on rate limits or outages, which would mask real failures, and *not* on a genuine model refusal, which is layer 3 working correctly. The substitute is named on `Answer.answered_by` and shown in the UI, because a reader is entitled to know a different and weaker model produced the text. Two invariants are enforced at construction: both providers must agree on citation style, since the prompt is built before anyone knows which will answer it, and the context budget uses the **smaller** of the two windows.
+>
+> Measured end to end on *"Where should the pebbles for stoning at the Jamarah be collected from?"* — retrieval put the blocked chunk first at 0.8164, Azure alone returned `abstained=True, reason=refusal`, and with the fallback the ruling came back correctly from p142.
+>
+> **The generalisable lesson.** A corpus of classical jurisprudence and a commercial safety classifier are not aligned, and no amount of threshold tuning aligns them: the book discusses ritual purity after intercourse, menstruation, animal sacrifice and stoning, in the register a 17th-century jurist used. Any hosted provider will refuse some of it. Treat "the provider refuses the source" as a first-class failure mode of a RAG system over religious or legal text, and have a path that does not depend on that provider's judgement about the corpus.
+>
+> **And note which defence caught it: none of them.** All four layers passed — the citation check was clean, the gate was clear, the prompt was obeyed. It took sending all 177 chunks one at a time. The 42-question golden set reports `0/42` content-filtered, because neither blocked chunk is retrieved by any question in it; see the §4 correction on what that set can and cannot measure.
+
 ---
 
 ## 2. Orchestration

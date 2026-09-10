@@ -26,6 +26,9 @@ AI_FIQH_LLM_PROVIDER=azure         # azure | ollama | anthropic
 AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
 AZURE_OPENAI_API_KEY=...
 AZURE_OPENAI_DEPLOYMENT=<your deployment name>
+
+# Optional, and recommended on Azure — see "When the content filter refuses"
+AI_FIQH_LLM_FALLBACK_PROVIDER=ollama
 ```
 
 Embeddings build themselves on first search (~8s) and cache to `index/`.
@@ -38,8 +41,40 @@ than a rewrite. Retrieval is unaffected either way — it is Voyage in all three
 | `AI_FIQH_LLM_PROVIDER` | Needs | Context | Notes |
 |---|---|---|---|
 | `azure` *(default)* | `AZURE_OPENAI_ENDPOINT`, `_API_KEY`, `_DEPLOYMENT` | 128k | Strict JSON-schema structured output. Optional `_API_VERSION`, `_CONTEXT_TOKENS`. |
-| `ollama` | `ollama serve` + a pulled model | 8k on `gemma2:9b` | Free and offline. `OLLAMA_MODEL`, `OLLAMA_HOST`, `OLLAMA_CONTEXT_TOKENS`. |
+| `ollama` | `ollama serve` + a pulled model | 16k as configured | Free and offline, and **no content filter**. `OLLAMA_MODEL` (default `gemma4:12b`), `OLLAMA_HOST`, `OLLAMA_CONTEXT_TOKENS`, `OLLAMA_THINKING_RESERVE`. |
 | `anthropic` | `ANTHROPIC_API_KEY`, `uv sync --group cloud` | 200k | The only one with API-native citations; kept for comparison. |
+
+### When the content filter refuses
+
+Azure's content filter rejects part of this corpus. `Nur al-Idah`'s Book of
+Purity covers ghusl after intercourse, menstruation and istihadah in the clinical
+register a 17th-century jurist would use, and Azure scores
+`019-things-which-do-not-necessitate-ghusl` (p19) as `sexual: medium` and refuses
+**the whole prompt** — the book's own text, not the question and not the answer.
+Configuring a custom filter did not lift it.
+
+Left alone, that surfaces as the system telling a user *"Nur al-Idah does not
+appear to address this"* about a ruling printed on p19 — a false statement about
+the book, which costs more credibility than it saves.
+
+So `AI_FIQH_LLM_FALLBACK_PROVIDER` names a second provider used for **exactly**
+that case:
+
+```
+Azure returns a content-filter refusal  ->  retry the same prompt on Ollama
+anything else (rate limit, outage, 400) ->  fail normally
+```
+
+It is deliberately narrow. Falling back on transient errors would mask outages,
+and falling back on a genuine model refusal would defeat §1.7 layer 3. The
+substitute model is named on the answer (`Answer.answered_by`) and shown as a
+warning in the UI, because a reader is entitled to know a different, weaker model
+produced it. Retrieval and every citation check are unchanged.
+
+Two constraints, enforced at construction: both providers must agree on citation
+style (otherwise one receives a prompt built for the other's scheme), and the
+context budget uses the **smaller** of the two windows, since the prompt is built
+before anyone knows which provider will answer it.
 
 **Citations work differently off Anthropic.** Anthropic returns citations as
 structural objects that cannot point outside the documents supplied. Everywhere

@@ -1,6 +1,6 @@
 # AI-Fiqh — Project Tracker
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-10
 **Phase:** Build order complete — all ten steps of research.md §6 are done,
 including the Streamlit UI. No new components are outstanding, but "quality
 hardening" now understates what is open: **the confidence gate (§1.7 layer 2)
@@ -40,7 +40,8 @@ Read *2026-09-04 (cont.)* before trusting any eval number in this file. See
 | §1.7 layer 1 — citations | **Rebuilt** ⚠️ 2026-09-02 — `[n]` markers resolved in code; weaker than the API-native guarantee it replaced |
 | §1.7 layer 2 — confidence gate | **Not sound** ❌ 2026-09-04 — scores phrasing, not answerability; classes do not separate under any threshold |
 | Golden set | 42 questions ⚠️ — shares the corpus's vocabulary, so it cannot measure the gate's real failure mode |
-| Azure content filter | **Blocking** ❌ — `019-things-which-do-not-necessitate-ghusl` (p19) rejected; a custom filter did not resolve it |
+| Azure content filter | **Worked around** ✅ 2026-09-10 — 2/177 chunks refused under `violence` (p84-86, p142-143); resolved by `llm.FallbackClient`, user-verified |
+| Ollama fallback | Done ✅ 2026-09-10 — `gemma4:12b`, fires only on a content-filter refusal, substitute model surfaced to the reader |
 
 ### Ingestion results (2026-07-30)
 
@@ -705,6 +706,18 @@ team rather than a portal toggle.
 > Until then Q01 fails deterministically on every eval run and should be read as
 > a known infrastructure failure, not a pipeline regression.
 
+> **Superseded 2026-09-10 — read that entry instead of acting on this one.**
+> Possibility (2) above was right: the custom filter was aimed at `sexual` and
+> applied cleanly, so `019-things-which-do-not-necessitate-ghusl` now passes 5/5
+> and Q01 answers on Azure. What remained was a **different category**,
+> `violence`, on two entirely different chunks that no golden question retrieves
+> — which is why the filter change appeared to have had no effect. The conclusion
+> "the right fix is the filter policy, not code" was half right: policy fixed one
+> category, and a narrow code path (`llm.FallbackClient`) was needed for the
+> other. The code mitigations rejected here were rejected for the right reason —
+> dropping the blocked chunk would break a polarity pair — and the fallback
+> avoids that by re-sending the *same* context to a different model.
+
 Code mitigations were considered and **not** implemented, because each trades
 away something the design promises: retrying without the blocked chunk would
 silently drop one side of a polarity pair, which is the exact failure §1.3
@@ -838,6 +851,158 @@ the cross-madhhab ones.
 
 Recorded as corrections in `research.md` §1.7 (layer 2, and the "layers 2 and 4
 are code" claim) and §4.
+
+## 2026-09-10 — the provider refusing the source, and gemma4 as the escape hatch
+
+**Verified resolved by the user.** Azure's content filter was still refusing
+parts of the book after a custom filter policy was applied. The cause turned out
+to be a different category than the one that had been fixed, and the fix is a
+narrow second provider rather than more filter configuration.
+
+### What was actually still blocked
+
+Previous passes found one chunk by bisecting a single failing question. This time
+**all 177 chunks were sent to Azure individually**, which is the only way to know
+the real extent:
+
+| chunk | book | pages | category | what trips it |
+|---|---|---|---|---|
+| `083-jumuah-p1` | salah | 84–86 | `violence` | "(to stand) **without a sword** in those lands which were **conquered** through a truce" |
+| `138-…rituals-of-hajj-p4` | hajj | 142–143 | `violence` | "**stone** from the centre of the valley using seven **pebble-like stones**" — ramy al-jamarāt |
+
+**2 of 177, and both are false positives.** A classifier refusing the stoning of
+the Jamarāt — a pillar ritual of Hajj — and a ruling on whether the khatīb holds
+a sword during a Friday sermon.
+
+**The custom filter did work, on the category it was aimed at.**
+`019-things-which-do-not-necessitate-ghusl`, which failed deterministically in
+all three eval runs on 2026-09-04, now passes **5/5** with the chunk confirmed
+still in context. `sexual` was fixed; `violence` was never touched. That is why
+it looked like the filter change had done nothing.
+
+### ⚑ The golden set is blind to this
+
+| | result |
+|---|---|
+| corpus scan | **2/177 chunks blocked** |
+| 42-question golden-set sweep | **0/42 content-filtered** |
+
+Neither blocked chunk is retrieved by any golden question, so the eval reports a
+clean run on a corpus with two unanswerable passages in it. Another instance of
+the item already at the top of *Next steps* — **the set cannot measure what it
+does not reach**, and this time the blind spot was infrastructure rather than
+phrasing.
+
+A claim made and then withdrawn in the same session, recorded so it is not
+repeated: the §2.2 enumeration path was assumed to drag the blocked Hajj chunk
+into any Hajj enumeration question. It does not — *"What are the wajib acts of
+hajj?"* merges the **wajibat** section, not the rituals chapter, and answers
+normally. The real exposure is questions whose retrieval lands on those two
+chunks directly.
+
+### Resolution: `llm.FallbackClient`
+
+Retries the identical prompt on a second provider when, and only when, the
+primary returns a content-filter refusal.
+
+| primary returns | falls back? | why |
+|---|---|---|
+| normal answer | no | — |
+| **content filter** | **yes** | permanent, reproducible, not the user's fault |
+| model refusal | **no** | that is §1.7 layer 3 working; overriding it would defeat the design |
+| rate limit / outage | **no** | transient or a real bug; a quiet model swap would hide both |
+
+Two invariants enforced at construction:
+
+- **Citation styles must match.** The prompt is built before anyone knows which
+  provider answers it, so pairing a native-citation provider with a marker one
+  would hand one a prompt built for the other's scheme. Construction fails.
+- **Context is budgeted against the smaller window** — 16K for Ollama, not
+  Azure's 128K.
+
+The substitute is surfaced, never silent: `Answer.answered_by`,
+`Answer.fallback_used`, a warning in the Streamlit UI, and a line in
+`Answer.show()`.
+
+Measured end to end:
+
+```
+Q: Where should the pebbles for stoning at the Jamarah be collected from?
+   retrieval: blocked chunk ranked #1, score 0.8164 (well clear of the gate)
+   AZURE ALONE   -> abstained=True  reason=refusal  stop=content_filter
+   WITH FALLBACK -> answered by ollama/gemma4:12b, layer4_ok=True, ruling correct per p142
+```
+
+Enabled with `AI_FIQH_LLM_FALLBACK_PROVIDER=ollama`. Empty disables the whole
+mechanism, so nothing changes for anyone who does not opt in.
+
+### gemma4:12b — three adjustments it needed
+
+`gemma2:9b` and `deepseek-r1:8b` are no longer pulled; `OLLAMA_MODEL` now
+defaults to `gemma4:12b` (11.9B, Q4_K_M, 262,144 advertised context).
+
+1. **It is a reasoning model.** It returns `thinking` alongside `content`, and
+   `num_predict` caps the two together — so a ceiling sized for the answer alone
+   is spent entirely on reasoning and returns **empty content** with
+   `done_reason="length"`. Measured at **14,668 characters (~4,200 tokens) of
+   reasoning on one wudu question.** `OllamaClient.complete` now raises a named
+   error instead of handing the pipeline an empty answer to interpret as "the
+   model had nothing to say".
+2. **Thinking is off by default, on arithmetic rather than taste.** It competes
+   with the excerpts for one window:
+
+   | `OLLAMA_THINK` | reserve | `num_predict` | excerpt budget | worst case (9,487) fits |
+   |---|---|---|---|---|
+   | `0` | 0 | 2,000 | **12,905** | yes |
+   | `1` | 6,144 | 8,144 | 6,761 | **no** |
+
+   Paying for reasoning by giving the model less of the book to reason over is the
+   wrong trade. `OLLAMA_THINK=1` re-enables it; raise `OLLAMA_CONTEXT_TOKENS` to
+   match if the machine has the headroom.
+3. **262,144 context is a trap on this hardware.** Requesting 32,768 drove an
+   18GB M3 Pro to **9.6GB of swap** with the model resident and made a single
+   question take minutes. `OLLAMA_CONTEXT_TOKENS = 16_384` leaves a ~10,900-token
+   excerpt budget against a 9,487-token worst case, at half the KV cache.
+
+Also fixed: the `think` parameter is dropped on the first rejection rather than
+version-sniffed, so older servers and non-reasoning models still work.
+
+### gemma4 quality — better than gemma2, not good enough to lead
+
+It **passes the polarity trap gemma2 failed twice**, distinguishing both sides:
+
+> "Laughing aloud does not break wuḍūʾ if … firmly seated … [2]. However, the
+> loud laughing of a mature person, while awake, in a prayer consisting of rukūʿ
+> and sajdah will nullify wuḍūʾ [1]."
+
+**But the first clause is fabricated.** Non-nullifier item 9 is about *sleeping*
+firmly seated, not laughing; gemma4 grafted "laughing aloud" onto the sleeping
+ruling and cited `[2]` for it. gpt-5.4 on the equivalent question produces no
+such conflation.
+
+**Layer 4 cannot catch this** — the chunk exists and the page is in context. It is
+exactly the limit recorded in the §1.7 layer-1 correction: marker resolution
+verifies that a citation *resolves*, not that it *supports the claim*. Which is
+the case for the architecture chosen: Azure primary, gemma4 as the escape hatch.
+
+Latency, for planning: ~30–40s per question with thinking off against Azure's
+3–8s, so a 42-question eval on Ollama is ~20–25 minutes rather than 40 seconds.
+Acceptable for a fallback firing on a handful of questions; not as a primary.
+
+### Still open
+
+- **The two blocked chunks have no golden-set coverage.** Add a question that
+  retrieves each (the pebble-collection question works for Hajj) so the eval can
+  see this class at all.
+- **`083-jumuah-p1` has not been exercised end to end** — only the isolated-chunk
+  scan proved it is refused. No question has been run that retrieves it.
+- **The fallback path is untested under the eval harness.** `run_eval.py` does not
+  record `fallback_used`, so a scored run cannot currently show how often the
+  substitute answered.
+- **Nothing changes for revision mode.** `generate_mcq` and `cards_from_passage`
+  go through `FallbackClient.parse`, which falls back silently — no equivalent of
+  `answered_by` reaches `MCQ` or `Flashcard`. Acceptable for practice material,
+  worth knowing.
 
 ## Environment
 
@@ -1367,9 +1532,15 @@ components:
   recorded there: multi-query retrieval with RRF fusion, a margin-based signal,
   routing the grey band to layer 3, or some combination. Do not retune
   `MIN_RERANK_SCORE` as if it were a tuning problem.
-- **Azure content filter blocks `019-things-which-do-not-necessitate-ghusl`** —
-  a custom filter did not resolve it. See the update in *2026-09-04* above for
-  the three remaining avenues.
+- ~~**Azure content filter blocks `019-things-which-do-not-necessitate-ghusl`**~~
+  — **resolved 2026-09-10.** A custom filter policy fixed the `sexual` category;
+  the two remaining refusals are `violence` false positives (Friday-sermon sword,
+  ramy al-jamarāt) and are handled by `llm.FallbackClient`. See *2026-09-10*.
+- **Give the two content-filtered chunks golden-set coverage** — `083-jumuah-p1`
+  and `138-…rituals-of-hajj-p4`. The scan found them; the eval cannot see them
+  (`0/42`). Fold into the golden-set rebuild above.
+- **Record `fallback_used` in `run_eval.py`** so a scored run shows how often the
+  substitute model answered, rather than reporting it as an ordinary pass.
 - **`sawm-kaffarah` variant group** — split Q20 out or redefine the metric on
   recall (see *Open questions added 2026-08-04*).
 - **⚑ Zakah/Hajj MCQ coverage — draft ready, awaiting your fiqh review.**
