@@ -1,0 +1,1080 @@
+[
+  {
+    "id": "Q01N1",
+    "source_id": "Q01",
+    "category": "Straightforward covered",
+    "question": "In the Hanafi school, what parts of a full ritual bath are required for it to count?",
+    "expected_behavior": "Retrieval loop successfully extracts the required enumerations and grounds the response with accurate section citations.",
+    "reference_answer": "The obligatory acts of ghusl are washing the mouth, washing the nose, and washing the entire body once.",
+    "expected_chunk_ids": [
+      "019-the-fard-actions-of-ghusl"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6,
+    "variant_overlap": 0.2222
+  },
+  {
+    "id": "Q01N2",
+    "source_id": "Q01",
+    "category": "Straightforward covered",
+    "question": "What do I have to do in a full purification bath for it to be valid in Hanafi fiqh?",
+    "expected_behavior": "Retrieval loop successfully extracts the required enumerations and grounds the response with accurate section citations.",
+    "reference_answer": "The obligatory acts of ghusl are washing the mouth, washing the nose, and washing the entire body once.",
+    "expected_chunk_ids": [
+      "019-the-fard-actions-of-ghusl"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6,
+    "variant_overlap": 0.1429
+  },
+  {
+    "id": "Q01N3",
+    "source_id": "Q01",
+    "category": "Straightforward covered",
+    "question": "Hanafi ghusl fard acts",
+    "expected_behavior": "Retrieval loop successfully extracts the required enumerations and grounds the response with accurate section citations.",
+    "reference_answer": "The obligatory acts of ghusl are washing the mouth, washing the nose, and washing the entire body once.",
+    "expected_chunk_ids": [
+      "019-the-fard-actions-of-ghusl"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q02N1",
+    "source_id": "Q02",
+    "category": "Straightforward covered",
+    "question": "In Hanafi Islam, what times of day is it not allowed at all to pray salah?",
+    "expected_behavior": "Identifies the three forbidden times and provides appropriate source grounding.",
+    "reference_answer": "It is strictly forbidden to offer salah whilst the sun is rising, when it reaches the meridian (zawal), and when it becomes pale yellow until it sets.",
+    "expected_chunk_ids": [
+      "032-times-in-which-salah-is-impermissible-and-times-in-which-sal"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.4286
+  },
+  {
+    "id": "Q02N2",
+    "source_id": "Q02",
+    "category": "Straightforward covered",
+    "question": "What if I want to pray in the Hanafi school—when are the times that prayer is completely forbidden?",
+    "expected_behavior": "Identifies the three forbidden times and provides appropriate source grounding.",
+    "reference_answer": "It is strictly forbidden to offer salah whilst the sun is rising, when it reaches the meridian (zawal), and when it becomes pale yellow until it sets.",
+    "expected_chunk_ids": [
+      "032-times-in-which-salah-is-impermissible-and-times-in-which-sal"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.4444
+  },
+  {
+    "id": "Q02N3",
+    "source_id": "Q02",
+    "category": "Straightforward covered",
+    "question": "Hanafi forbidden prayer times",
+    "expected_behavior": "Identifies the three forbidden times and provides appropriate source grounding.",
+    "reference_answer": "It is strictly forbidden to offer salah whilst the sun is rising, when it reaches the meridian (zawal), and when it becomes pale yellow until it sets.",
+    "expected_chunk_ids": [
+      "032-times-in-which-salah-is-impermissible-and-times-in-which-sal"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q03N1",
+    "source_id": "Q03",
+    "category": "Straightforward covered",
+    "question": "In Hanafi fiqh, how much silver do you need before zakat becomes due?",
+    "expected_behavior": "Extracts the exact numerical weight/value from the text without hallucinating external currency conversions.",
+    "reference_answer": "The nisab threshold for silver is two hundred dirhams.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p2"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q03N2",
+    "source_id": "Q03",
+    "category": "Straightforward covered",
+    "question": "What’s the minimum amount of silver in the Hanafi school that makes you have to pay zakat?",
+    "expected_behavior": "Extracts the exact numerical weight/value from the text without hallucinating external currency conversions.",
+    "reference_answer": "The nisab threshold for silver is two hundred dirhams.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p2"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.0909
+  },
+  {
+    "id": "Q03N3",
+    "source_id": "Q03",
+    "category": "Straightforward covered",
+    "question": "Hanafi silver zakat threshold amount",
+    "expected_behavior": "Extracts the exact numerical weight/value from the text without hallucinating external currency conversions.",
+    "reference_answer": "The nisab threshold for silver is two hundred dirhams.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p2"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.2
+  },
+  {
+    "id": "Q04N1",
+    "source_id": "Q04",
+    "category": "Straightforward covered",
+    "question": "In the Hanafi school, what breaks a fast and means you have to both make up the day and also do the expiation?",
+    "expected_behavior": "Accurately lists the core invalidators (eating, drinking, intercourse) based strictly on the provided context.",
+    "reference_answer": "Intentional intercourse or eating/drinking a consumable item for nourishment or medicinal benefit invalidates the fast and requires both qada and kaffarah.",
+    "expected_chunk_ids": [
+      "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.25
+  },
+  {
+    "id": "Q04N2",
+    "source_id": "Q04",
+    "category": "Straightforward covered",
+    "question": "If I'm fasting in the Hanafi madhhab, what kind of thing would break my fast so badly that I have to make up the fast and also pay the kaffarah?",
+    "expected_behavior": "Accurately lists the core invalidators (eating, drinking, intercourse) based strictly on the provided context.",
+    "reference_answer": "Intentional intercourse or eating/drinking a consumable item for nourishment or medicinal benefit invalidates the fast and requires both qada and kaffarah.",
+    "expected_chunk_ids": [
+      "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.4615
+  },
+  {
+    "id": "Q04N3",
+    "source_id": "Q04",
+    "category": "Straightforward covered",
+    "question": "Hanafi: what breaks the fast and requires both making it up and kaffarah?",
+    "expected_behavior": "Accurately lists the core invalidators (eating, drinking, intercourse) based strictly on the provided context.",
+    "reference_answer": "Intentional intercourse or eating/drinking a consumable item for nourishment or medicinal benefit invalidates the fast and requires both qada and kaffarah.",
+    "expected_chunk_ids": [
+      "109-chapter-on-those-things-which-nullify-the-fast-and-necessita-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.6667,
+    "variant_overlap": 0.5714
+  },
+  {
+    "id": "Q05N1",
+    "source_id": "Q05",
+    "category": "Straightforward covered",
+    "question": "In the Hanafi school, how many essential parts are there in the prayer?",
+    "expected_behavior": "Retrieval loop surfaces the specific pillars of salah.",
+    "reference_answer": "There are four arkan of salah: standing, reciting, making ruku, and making sujud.",
+    "expected_chunk_ids": [
+      "036-the-prerequisites-of-salah-and-its-components-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.4286,
+    "variant_overlap": 0.2857
+  },
+  {
+    "id": "Q05N2",
+    "source_id": "Q05",
+    "category": "Straightforward covered",
+    "question": "How many things are counted as the main required parts of salah in Hanafi fiqh?",
+    "expected_behavior": "Retrieval loop surfaces the specific pillars of salah.",
+    "reference_answer": "There are four arkan of salah: standing, reciting, making ruku, and making sujud.",
+    "expected_chunk_ids": [
+      "036-the-prerequisites-of-salah-and-its-components-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.4286,
+    "variant_overlap": 0.2
+  },
+  {
+    "id": "Q05N3",
+    "source_id": "Q05",
+    "category": "Straightforward covered",
+    "question": "Hanafi prayer pillars how many",
+    "expected_behavior": "Retrieval loop surfaces the specific pillars of salah.",
+    "reference_answer": "There are four arkan of salah: standing, reciting, making ruku, and making sujud.",
+    "expected_chunk_ids": [
+      "036-the-prerequisites-of-salah-and-its-components-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.4286,
+    "variant_overlap": 0.25
+  },
+  {
+    "id": "Q06N1",
+    "source_id": "Q06",
+    "category": "Straightforward covered",
+    "question": "In the Hanafi school, what parts of a free man's body have to be covered?",
+    "expected_behavior": "Correctly maps the bodily boundaries defined in the text.",
+    "reference_answer": "The 'awrah of a free male is the area from the navel till below the knees.",
+    "expected_chunk_ids": [
+      "038-related-masail-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.625
+  },
+  {
+    "id": "Q06N2",
+    "source_id": "Q06",
+    "category": "Straightforward covered",
+    "question": "For a free male in Hanafi fiqh, what is the minimum area he must cover in front of others?",
+    "expected_behavior": "Correctly maps the bodily boundaries defined in the text.",
+    "reference_answer": "The 'awrah of a free male is the area from the navel till below the knees.",
+    "expected_chunk_ids": [
+      "038-related-masail-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q06N3",
+    "source_id": "Q06",
+    "category": "Straightforward covered",
+    "question": "Hanafi: what counts as a free man's private area that must be covered?",
+    "expected_behavior": "Correctly maps the bodily boundaries defined in the text.",
+    "reference_answer": "The 'awrah of a free male is the area from the navel till below the knees.",
+    "expected_chunk_ids": [
+      "038-related-masail-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q07N1",
+    "source_id": "Q07",
+    "category": "Straightforward covered",
+    "question": "In the Hanafi school, how long can you wipe over your socks instead of washing your feet if you're at home, and how long if you're traveling?",
+    "expected_behavior": "Retrieves the exact timeframe and grounds it with a citation.",
+    "reference_answer": "A resident may make masah for 24 hours, and a traveller for 72 hours.",
+    "expected_chunk_ids": [
+      "024-masah-upon-the-socks-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8333,
+    "variant_overlap": 0.3077
+  },
+  {
+    "id": "Q07N2",
+    "source_id": "Q07",
+    "category": "Straightforward covered",
+    "question": "According to Hanafi rules, what’s the time limit for wiping over socks for someone who is a resident versus someone on a journey?",
+    "expected_behavior": "Retrieves the exact timeframe and grounds it with a citation.",
+    "reference_answer": "A resident may make masah for 24 hours, and a traveller for 72 hours.",
+    "expected_chunk_ids": [
+      "024-masah-upon-the-socks-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8333,
+    "variant_overlap": 0.1667
+  },
+  {
+    "id": "Q07N3",
+    "source_id": "Q07",
+    "category": "Straightforward covered",
+    "question": "Hanafi wipe over socks time limit resident traveler",
+    "expected_behavior": "Retrieves the exact timeframe and grounds it with a citation.",
+    "reference_answer": "A resident may make masah for 24 hours, and a traveller for 72 hours.",
+    "expected_chunk_ids": [
+      "024-masah-upon-the-socks-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8333,
+    "variant_overlap": 0.4286
+  },
+  {
+    "id": "Q08N1",
+    "source_id": "Q08",
+    "category": "Straightforward covered",
+    "question": "In the Hanafi school, when do you have to pay Sadaqat al-Fitr?",
+    "expected_behavior": "Identifies the specific time threshold from the text.",
+    "reference_answer": "It becomes obligatory at the beginning of Fajr time on the day of Eid al-Fitr.",
+    "expected_chunk_ids": [
+      "129-chapter-on-sadaqat-alfitr-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.4286
+  },
+  {
+    "id": "Q08N2",
+    "source_id": "Q08",
+    "category": "Straightforward covered",
+    "question": "Exactly when does Sadaqat al-Fitr become due in Hanafi fiqh?",
+    "expected_behavior": "Identifies the specific time threshold from the text.",
+    "reference_answer": "It becomes obligatory at the beginning of Fajr time on the day of Eid al-Fitr.",
+    "expected_chunk_ids": [
+      "129-chapter-on-sadaqat-alfitr-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.5714
+  },
+  {
+    "id": "Q08N3",
+    "source_id": "Q08",
+    "category": "Straightforward covered",
+    "question": "What time does Sadaqat al-Fitr become required according to the Hanafi madhhab?",
+    "expected_behavior": "Identifies the specific time threshold from the text.",
+    "reference_answer": "It becomes obligatory at the beginning of Fajr time on the day of Eid al-Fitr.",
+    "expected_chunk_ids": [
+      "129-chapter-on-sadaqat-alfitr-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.625
+  },
+  {
+    "id": "Q09N1",
+    "source_id": "Q09",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, if I fall asleep while sitting firmly in place, does my washing before prayer break?",
+    "expected_behavior": "Correct side of the pair; accurately denies that wudu is broken under this specific physical condition.",
+    "reference_answer": "No, sleeping firmly seated does not break wudu, even if leaning against something.",
+    "expected_chunk_ids": [
+      "018-those-things-which-do-not-break-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q09N2",
+    "source_id": "Q09",
+    "category": "Polarity trap",
+    "question": "If I doze off while seated with my body planted and not slumped over, do I need to wash again before prayer according to Hanafi fiqh?",
+    "expected_behavior": "Correct side of the pair; accurately denies that wudu is broken under this specific physical condition.",
+    "reference_answer": "No, sleeping firmly seated does not break wudu, even if leaning against something.",
+    "expected_chunk_ids": [
+      "018-those-things-which-do-not-break-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.2308
+  },
+  {
+    "id": "Q09N3",
+    "source_id": "Q09",
+    "category": "Polarity trap",
+    "question": "Hanafi: sleeping while sitting firmly — does it break wudu?",
+    "expected_behavior": "Correct side of the pair; accurately denies that wudu is broken under this specific physical condition.",
+    "reference_answer": "No, sleeping firmly seated does not break wudu, even if leaning against something.",
+    "expected_chunk_ids": [
+      "018-those-things-which-do-not-break-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.6667
+  },
+  {
+    "id": "Q10N1",
+    "source_id": "Q10",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, if I throw up by itself without meaning to while fasting, does my fast break?",
+    "expected_behavior": "Identifies the nuance between voluntary and involuntary actions, affirming the fast remains valid.",
+    "reference_answer": "No, vomiting involuntarily does not nullify the fast, even if it amounts to a mouthful.",
+    "expected_chunk_ids": [
+      "108-chapter-on-those-things-which-do-not-nullify-the-fast-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.375
+  },
+  {
+    "id": "Q10N2",
+    "source_id": "Q10",
+    "category": "Polarity trap",
+    "question": "Does accidental vomiting while fasting invalidate the fast according to Hanafi?",
+    "expected_behavior": "Identifies the nuance between voluntary and involuntary actions, affirming the fast remains valid.",
+    "reference_answer": "No, vomiting involuntarily does not nullify the fast, even if it amounts to a mouthful.",
+    "expected_chunk_ids": [
+      "108-chapter-on-those-things-which-do-not-nullify-the-fast-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q10N3",
+    "source_id": "Q10",
+    "category": "Polarity trap",
+    "question": "vomiting without meaning to while fasting Hanafi does it break the fast",
+    "expected_behavior": "Identifies the nuance between voluntary and involuntary actions, affirming the fast remains valid.",
+    "reference_answer": "No, vomiting involuntarily does not nullify the fast, even if it amounts to a mouthful.",
+    "expected_chunk_ids": [
+      "108-chapter-on-those-things-which-do-not-nullify-the-fast-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.6667
+  },
+  {
+    "id": "Q11N1",
+    "source_id": "Q11",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, can I give my zakat money to my parents or my children?",
+    "expected_behavior": "Asserts the negative; recognizes the explicit prohibition regarding ascendant and descendant relatives.",
+    "reference_answer": "No, it is impermissible to give Zakah to one's offspring or forebears.",
+    "expected_chunk_ids": [
+      "127-recipients-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.3333,
+    "variant_overlap": 0.25
+  },
+  {
+    "id": "Q11N2",
+    "source_id": "Q11",
+    "category": "Polarity trap",
+    "question": "What if I want to use my zakat to help my mother, father, son, or daughter—is that allowed in Hanafi fiqh?",
+    "expected_behavior": "Asserts the negative; recognizes the explicit prohibition regarding ascendant and descendant relatives.",
+    "reference_answer": "No, it is impermissible to give Zakah to one's offspring or forebears.",
+    "expected_chunk_ids": [
+      "127-recipients-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.3333,
+    "variant_overlap": 0.0909
+  },
+  {
+    "id": "Q11N3",
+    "source_id": "Q11",
+    "category": "Polarity trap",
+    "question": "Hanafi zakat to parents or children allowed?",
+    "expected_behavior": "Asserts the negative; recognizes the explicit prohibition regarding ascendant and descendant relatives.",
+    "reference_answer": "No, it is impermissible to give Zakah to one's offspring or forebears.",
+    "expected_chunk_ids": [
+      "127-recipients-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.3333,
+    "variant_overlap": 0.2
+  },
+  {
+    "id": "Q12N1",
+    "source_id": "Q12",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, if someone walks in front of you while you're praying, does it break your prayer?",
+    "expected_behavior": "Distinguishes between the sin of the walker and the validity of the prayer, affirming the salah remains intact.",
+    "reference_answer": "No, the salah remains intact, though the one passing in front is sinful.",
+    "expected_chunk_ids": [
+      "055-things-which-do-not-nullify-salah"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.2
+  },
+  {
+    "id": "Q12N2",
+    "source_id": "Q12",
+    "category": "Polarity trap",
+    "question": "What if a person passes in front of me during salah in Hanafi fiqh — is my prayer invalid?",
+    "expected_behavior": "Distinguishes between the sin of the walker and the validity of the prayer, affirming the salah remains intact.",
+    "reference_answer": "No, the salah remains intact, though the one passing in front is sinful.",
+    "expected_chunk_ids": [
+      "055-things-which-do-not-nullify-salah"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.375
+  },
+  {
+    "id": "Q12N3",
+    "source_id": "Q12",
+    "category": "Polarity trap",
+    "question": "Hanafi does someone crossing in front of you while praying cancel the prayer",
+    "expected_behavior": "Distinguishes between the sin of the walker and the validity of the prayer, affirming the salah remains intact.",
+    "reference_answer": "No, the salah remains intact, though the one passing in front is sinful.",
+    "expected_chunk_ids": [
+      "055-things-which-do-not-nullify-salah"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.25
+  },
+  {
+    "id": "Q13N1",
+    "source_id": "Q13",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, if I tried my best to figure out the direction of prayer and later found out I was wrong, do I have to pray again?",
+    "expected_behavior": "Correctly negates the need for repetition based on the good faith effort (taharri).",
+    "reference_answer": "No, if they make a rational assumption (taharri) and err but complete the prayer, they do not have to repeat it.",
+    "expected_chunk_ids": [
+      "038-related-masail-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q13N2",
+    "source_id": "Q13",
+    "category": "Polarity trap",
+    "question": "If someone in the Hanafi madhhab makes their best guess for which way to face in prayer and then realizes it was the wrong direction, must they repeat the prayer?",
+    "expected_behavior": "Correctly negates the need for repetition based on the good faith effort (taharri).",
+    "reference_answer": "No, if they make a rational assumption (taharri) and err but complete the prayer, they do not have to repeat it.",
+    "expected_chunk_ids": [
+      "038-related-masail-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.375
+  },
+  {
+    "id": "Q13N3",
+    "source_id": "Q13",
+    "category": "Polarity trap",
+    "question": "Hanafi: guessed the prayer direction as best I could, turned out wrong — do I need to repeat the prayer?",
+    "expected_behavior": "Correctly negates the need for repetition based on the good faith effort (taharri).",
+    "reference_answer": "No, if they make a rational assumption (taharri) and err but complete the prayer, they do not have to repeat it.",
+    "expected_chunk_ids": [
+      "038-related-masail-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.4545
+  },
+  {
+    "id": "Q14N1",
+    "source_id": "Q14",
+    "category": "Polarity trap",
+    "question": "Can you read from the Quran book during prayer if you haven’t memorized those verses?",
+    "expected_behavior": "Correctly states the negative polarity regarding this action in prayer.",
+    "reference_answer": "No, reading from a mushaf that is not memorized nullifies the salah.",
+    "expected_chunk_ids": [
+      "051-chapter-regarding-those-things-which-nullify-salah-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.7143,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q14N2",
+    "source_id": "Q14",
+    "category": "Polarity trap",
+    "question": "If I hold a copy of the Quran and read from it while praying because I don’t know it by heart, is that allowed?",
+    "expected_behavior": "Correctly states the negative polarity regarding this action in prayer.",
+    "reference_answer": "No, reading from a mushaf that is not memorized nullifies the salah.",
+    "expected_chunk_ids": [
+      "051-chapter-regarding-those-things-which-nullify-salah-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.7143,
+    "variant_overlap": 0.2
+  },
+  {
+    "id": "Q14N3",
+    "source_id": "Q14",
+    "category": "Polarity trap",
+    "question": "reading Quran from the book in salah if not memorized allowed?",
+    "expected_behavior": "Correctly states the negative polarity regarding this action in prayer.",
+    "reference_answer": "No, reading from a mushaf that is not memorized nullifies the salah.",
+    "expected_chunk_ids": [
+      "051-chapter-regarding-those-things-which-nullify-salah-p1"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.7143,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q15N1",
+    "source_id": "Q15",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, can I use water a cat drank from to wash before prayer if I have other clean water available?",
+    "expected_behavior": "Correctly identifies the classification of the water (makruh) rather than outright haram or perfectly pure.",
+    "reference_answer": "The usage of this water is makruh (disliked) if other water is available.",
+    "expected_chunk_ids": [
+      "008-the-rulings-pertaining-to-leftover-water-sur"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.7143,
+    "variant_overlap": 0.4167
+  },
+  {
+    "id": "Q15N2",
+    "source_id": "Q15",
+    "category": "Polarity trap",
+    "question": "If a cat drinks from my water, is it okay in Hanafi fiqh to use that water for purification when I also have other water?",
+    "expected_behavior": "Correctly identifies the classification of the water (makruh) rather than outright haram or perfectly pure.",
+    "reference_answer": "The usage of this water is makruh (disliked) if other water is available.",
+    "expected_chunk_ids": [
+      "008-the-rulings-pertaining-to-leftover-water-sur"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.7143,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q15N3",
+    "source_id": "Q15",
+    "category": "Polarity trap",
+    "question": "Hanafi: cat drank from the water — can I still use it for washing before prayer if there’s other water?",
+    "expected_behavior": "Correctly identifies the classification of the water (makruh) rather than outright haram or perfectly pure.",
+    "reference_answer": "The usage of this water is makruh (disliked) if other water is available.",
+    "expected_chunk_ids": [
+      "008-the-rulings-pertaining-to-leftover-water-sur"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.7143,
+    "variant_overlap": 0.3
+  },
+  {
+    "id": "Q16N1",
+    "source_id": "Q16",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, if someone is able to go for Hajj, do they have to do it every year or just once?",
+    "expected_behavior": "Correctly negates the frequency, stating it is only once in a lifetime.",
+    "reference_answer": "No, Hajj is fard (obligatory) only once in a lifetime for a person who meets the conditions.",
+    "expected_chunk_ids": [
+      "132-the-book-of-hajj-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5714,
+    "variant_overlap": 0.3
+  },
+  {
+    "id": "Q16N2",
+    "source_id": "Q16",
+    "category": "Polarity trap",
+    "question": "What if a person meets all the requirements for Hajj in the Hanafi madhhab—are they required to go every year?",
+    "expected_behavior": "Correctly negates the frequency, stating it is only once in a lifetime.",
+    "reference_answer": "No, Hajj is fard (obligatory) only once in a lifetime for a person who meets the conditions.",
+    "expected_chunk_ids": [
+      "132-the-book-of-hajj-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5714,
+    "variant_overlap": 0.25
+  },
+  {
+    "id": "Q16N3",
+    "source_id": "Q16",
+    "category": "Polarity trap",
+    "question": "Hanafi: is Hajj required every year for someone who qualifies?",
+    "expected_behavior": "Correctly negates the frequency, stating it is only once in a lifetime.",
+    "reference_answer": "No, Hajj is fard (obligatory) only once in a lifetime for a person who meets the conditions.",
+    "expected_chunk_ids": [
+      "132-the-book-of-hajj-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5714,
+    "variant_overlap": 0.1429
+  },
+  {
+    "id": "Q17N1",
+    "source_id": "Q17",
+    "category": "Transliteration variant",
+    "question": "In the Hanafi school, what parts of washing before prayer are required?",
+    "expected_behavior": "Vector retrieval must pull the exact same document chunks as Q18 and Q19; passes exact match evaluation.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.5714
+  },
+  {
+    "id": "Q17N2",
+    "source_id": "Q17",
+    "category": "Transliteration variant",
+    "question": "What do I have to wash for my washing before prayer to count in the Hanafi madhhab?",
+    "expected_behavior": "Vector retrieval must pull the exact same document chunks as Q18 and Q19; passes exact match evaluation.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q17N3",
+    "source_id": "Q17",
+    "category": "Transliteration variant",
+    "question": "Hanafi obligatory parts of washing before prayer",
+    "expected_behavior": "Vector retrieval must pull the exact same document chunks as Q18 and Q19; passes exact match evaluation.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q18N1",
+    "source_id": "Q18",
+    "category": "Transliteration variant",
+    "question": "In the Hanafi school, what parts of washing before prayer are required?",
+    "expected_behavior": "Vector retrieval must overcome the diacritic gap; identical retrieval and generation to Q17.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.5714
+  },
+  {
+    "id": "Q18N2",
+    "source_id": "Q18",
+    "category": "Transliteration variant",
+    "question": "What do I have to wash for my washing before prayer to count in Hanafi fiqh?",
+    "expected_behavior": "Vector retrieval must overcome the diacritic gap; identical retrieval and generation to Q17.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q18N3",
+    "source_id": "Q18",
+    "category": "Transliteration variant",
+    "question": "Hanafi obligatory parts of washing before prayer",
+    "expected_behavior": "Vector retrieval must overcome the diacritic gap; identical retrieval and generation to Q17.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q19N2",
+    "source_id": "Q19",
+    "category": "Transliteration variant",
+    "question": "What do I have to wash for my washing before prayer to count in Hanafi?",
+    "expected_behavior": "Vector retrieval must accommodate the phonetic spelling variant; identical retrieval to Q17.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q19N3",
+    "source_id": "Q19",
+    "category": "Transliteration variant",
+    "question": "Hanafi obligatory parts of washing before prayer",
+    "expected_behavior": "Vector retrieval must accommodate the phonetic spelling variant; identical retrieval to Q17.",
+    "reference_answer": "Washing the face, washing both hands including elbows, washing both feet including ankles, and making masah of a quarter of the head.",
+    "expected_chunk_ids": [
+      "013-rules-pertaining-to-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q20N1",
+    "source_id": "Q20",
+    "category": "Transliteration variant",
+    "question": "In the Hanafi school, what do you have to do if you deliberately break your fast in Ramadan?",
+    "expected_behavior": "Standard ASCII retrieval baseline for fasting penalties.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q20N2",
+    "source_id": "Q20",
+    "category": "Transliteration variant",
+    "question": "What if I intentionally eat or drink while fasting in Ramadan according to Hanafi rules—what is the consequence?",
+    "expected_behavior": "Standard ASCII retrieval baseline for fasting penalties.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.5556
+  },
+  {
+    "id": "Q20N3",
+    "source_id": "Q20",
+    "category": "Transliteration variant",
+    "question": "Hanafi penalty for purposely breaking a Ramadan fast",
+    "expected_behavior": "Standard ASCII retrieval baseline for fasting penalties.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.75,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q21N1",
+    "source_id": "Q21",
+    "category": "Transliteration variant",
+    "question": "In the Hanafi school, what do I have to do if I deliberately break a fast?",
+    "expected_behavior": "Retrieval resilient to the inclusion of the transliterated Arabic term.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q21N2",
+    "source_id": "Q21",
+    "category": "Transliteration variant",
+    "question": "Hanafi: if someone intentionally eats or drinks while fasting, what compensation do they owe?",
+    "expected_behavior": "Retrieval resilient to the inclusion of the transliterated Arabic term.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q21N3",
+    "source_id": "Q21",
+    "category": "Transliteration variant",
+    "question": "penalty for purposely breaking a fast Hanafi",
+    "expected_behavior": "Retrieval resilient to the inclusion of the transliterated Arabic term.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q22N1",
+    "source_id": "Q22",
+    "category": "Transliteration variant",
+    "question": "In the Hanafi school, what do I have to do if I deliberately break a fast?",
+    "expected_behavior": "Diacritic resilience test; must yield the same semantic chunks as Q20 and Q21.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q22N2",
+    "source_id": "Q22",
+    "category": "Transliteration variant",
+    "question": "Hanafi: if someone intentionally breaks their fast, what is the required make-up or penalty?",
+    "expected_behavior": "Diacritic resilience test; must yield the same semantic chunks as Q20 and Q21.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.5
+  },
+  {
+    "id": "Q22N3",
+    "source_id": "Q22",
+    "category": "Transliteration variant",
+    "question": "penalty for purposely breaking a fast Hanafi",
+    "expected_behavior": "Diacritic resilience test; must yield the same semantic chunks as Q20 and Q21.",
+    "reference_answer": "Freeing a slave, fasting for two consecutive months, or feeding sixty destitute people.",
+    "expected_chunk_ids": [
+      "111-chapter-on-kaffarah-and-what-absolves-it-from-someones-liabi"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.8,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q23N1",
+    "source_id": "Q23",
+    "category": "Transliteration variant",
+    "question": "When do I have to start paying zakah on my money and savings?",
+    "expected_behavior": "Standard ASCII retrieval baseline for almsgiving thresholds.",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.1667
+  },
+  {
+    "id": "Q23N2",
+    "source_id": "Q23",
+    "category": "Transliteration variant",
+    "question": "At what point does wealth become subject to zakah?",
+    "expected_behavior": "Standard ASCII retrieval baseline for almsgiving thresholds.",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q23N3",
+    "source_id": "Q23",
+    "category": "Transliteration variant",
+    "question": "When does zakah become due on the wealth I own?",
+    "expected_behavior": "Standard ASCII retrieval baseline for almsgiving thresholds.",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.4
+  },
+  {
+    "id": "Q24N1",
+    "source_id": "Q24",
+    "category": "Transliteration variant",
+    "question": "In the Hanafi school, when do you have to start paying zakah on your money?",
+    "expected_behavior": "Diacritic and ending variant resilience test; identical retrieval to Q23.",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.1111
+  },
+  {
+    "id": "Q24N2",
+    "source_id": "Q24",
+    "category": "Transliteration variant",
+    "question": "According to Hanafi fiqh, at what point does wealth become liable for zakah?",
+    "expected_behavior": "Diacritic and ending variant resilience test; identical retrieval to Q23.",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.25
+  },
+  {
+    "id": "Q24N3",
+    "source_id": "Q24",
+    "category": "Transliteration variant",
+    "question": "When does zakah become due on wealth in the Hanafi madhhab?",
+    "expected_behavior": "Diacritic and ending variant resilience test; identical retrieval to Q23.",
+    "reference_answer": "When a free Muslim owns the nisab of productive wealth, is free from debt, and one complete lunar year passes.",
+    "expected_chunk_ids": [
+      "123-the-book-of-zakah-p0"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q41N1",
+    "source_id": "Q41",
+    "category": "Polarity trap",
+    "question": "In the Hanafi school, does bleeding from the mouth break washing before prayer?",
+    "expected_behavior": "Real-world false abstention found 2026-09-03. Retrieval succeeded — the reranker put 017-those-things-which-nullify-wudu at #1 (0.7383) with its polarity sibling at #2 (0.7227) — and the layer-2 gate discarded it by 0.0017. Must land on the affirmative side (blood overwhelming saliva nullifies) while acknowledging the contrasting case (blood that does not flow does not), since group expansion puts both in context.",
+    "reference_answer": "Yes. Blood which has overwhelmed the saliva or has equalled it nullifies wudu. By contrast, the mere appearance of blood which does not flow from its place does not break wudu.",
+    "expected_chunk_ids": [
+      "017-those-things-which-nullify-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.2857
+  },
+  {
+    "id": "Q41N2",
+    "source_id": "Q41",
+    "category": "Polarity trap",
+    "question": "If my mouth starts bleeding, do I need to wash before prayer again according to Hanafi?",
+    "expected_behavior": "Real-world false abstention found 2026-09-03. Retrieval succeeded — the reranker put 017-those-things-which-nullify-wudu at #1 (0.7383) with its polarity sibling at #2 (0.7227) — and the layer-2 gate discarded it by 0.0017. Must land on the affirmative side (blood overwhelming saliva nullifies) while acknowledging the contrasting case (blood that does not flow does not), since group expansion puts both in context.",
+    "reference_answer": "Yes. Blood which has overwhelmed the saliva or has equalled it nullifies wudu. By contrast, the mere appearance of blood which does not flow from its place does not break wudu.",
+    "expected_chunk_ids": [
+      "017-those-things-which-nullify-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q41N3",
+    "source_id": "Q41",
+    "category": "Polarity trap",
+    "question": "Hanafi mouth bleeding breaks prayer washing?",
+    "expected_behavior": "Real-world false abstention found 2026-09-03. Retrieval succeeded — the reranker put 017-those-things-which-nullify-wudu at #1 (0.7383) with its polarity sibling at #2 (0.7227) — and the layer-2 gate discarded it by 0.0017. Must land on the affirmative side (blood overwhelming saliva nullifies) while acknowledging the contrasting case (blood that does not flow does not), since group expansion puts both in context.",
+    "reference_answer": "Yes. Blood which has overwhelmed the saliva or has equalled it nullifies wudu. By contrast, the mere appearance of blood which does not flow from its place does not break wudu.",
+    "expected_chunk_ids": [
+      "017-those-things-which-nullify-wudu"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 0.5,
+    "variant_overlap": 0.3333
+  },
+  {
+    "id": "Q42N1",
+    "source_id": "Q42",
+    "category": "Straightforward covered",
+    "question": "How do you say the second call before prayer in the Hanafi way?",
+    "expected_behavior": "Real-world false abstention found 2026-09-03, scoring 0.6484. Two causes: 'iqama' was absent from the BM25 vocabulary (the corpus spells it 'iqamah'), so keyword search ranked on 'how'/'to'/'do' and returned the Hajj rituals chapter; and the phrasing names the topic rather than the aspect. Should give the manner of calling the iqamah from p33-34.",
+    "reference_answer": "The iqamah is the same as the adhan in all aspects: the takbir is called four times at the beginning, the final takbir is said twice, as are the rest of its words, and there is no tarji' in the shahadatayn. The words 'qad qamati al-salah' are repeated twice after 'hayya 'ala al-falah'. The iqamah is said speedily, whereas the adhan is called out unhurriedly.",
+    "expected_chunk_ids": [
+      "033-adhan"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.2857
+  },
+  {
+    "id": "Q42N2",
+    "source_id": "Q42",
+    "category": "Straightforward covered",
+    "question": "What do I say right before the prayer starts for iqama according to the Hanafi school?",
+    "expected_behavior": "Real-world false abstention found 2026-09-03, scoring 0.6484. Two causes: 'iqama' was absent from the BM25 vocabulary (the corpus spells it 'iqamah'), so keyword search ranked on 'how'/'to'/'do' and returned the Hajj rituals chapter; and the phrasing names the topic rather than the aspect. Should give the manner of calling the iqamah from p33-34.",
+    "reference_answer": "The iqamah is the same as the adhan in all aspects: the takbir is called four times at the beginning, the final takbir is said twice, as are the rest of its words, and there is no tarji' in the shahadatayn. The words 'qad qamati al-salah' are repeated twice after 'hayya 'ala al-falah'. The iqamah is said speedily, whereas the adhan is called out unhurriedly.",
+    "expected_chunk_ids": [
+      "033-adhan"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.375
+  },
+  {
+    "id": "Q42N3",
+    "source_id": "Q42",
+    "category": "Straightforward covered",
+    "question": "how to do the prayer-start call hanafi",
+    "expected_behavior": "Real-world false abstention found 2026-09-03, scoring 0.6484. Two causes: 'iqama' was absent from the BM25 vocabulary (the corpus spells it 'iqamah'), so keyword search ranked on 'how'/'to'/'do' and returned the Hajj rituals chapter; and the phrasing names the topic rather than the aspect. Should give the manner of calling the iqamah from p33-34.",
+    "reference_answer": "The iqamah is the same as the adhan in all aspects: the takbir is called four times at the beginning, the final takbir is said twice, as are the rest of its words, and there is no tarji' in the shahadatayn. The words 'qad qamati al-salah' are repeated twice after 'hayya 'ala al-falah'. The iqamah is said speedily, whereas the adhan is called out unhurriedly.",
+    "expected_chunk_ids": [
+      "033-adhan"
+    ],
+    "should_abstain": false,
+    "golden_overlap": 1.0,
+    "variant_overlap": 0.6667
+  }
+]

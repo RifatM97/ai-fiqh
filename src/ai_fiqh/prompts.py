@@ -155,7 +155,21 @@ def format_excerpts(chunks: list[dict]) -> str:
     )
 
 
-def format_question_with_excerpts(question: str, chunks: list[dict]) -> str:
+# Appended to the user turn, never the system prompt, when retrieval scored in the
+# low-confidence band (§1.7 layer 2). It belongs on the user turn for a mechanical
+# reason: the system prompt has to stay byte-stable for a provider's prefix cache
+# to hit it, and this text varies per question.
+LOW_CONFIDENCE_HINT = (
+    "\n\nNote: retrieval matched this question only weakly, so the excerpts above "
+    "may be about a related matter rather than this one. Read them before relying "
+    "on them, and if they do not actually settle the question, say so plainly "
+    "rather than stretching them to fit."
+)
+
+
+def format_question_with_excerpts(
+    question: str, chunks: list[dict], *, low_confidence: bool = False
+) -> str:
     """The whole user turn for a marker-citing provider.
 
     Excerpts lead and the question follows, matching the document-block ordering
@@ -167,6 +181,7 @@ def format_question_with_excerpts(question: str, chunks: list[dict]) -> str:
         f"{'-' * 60}\n\nQUESTION\n{question}\n\n"
         "Answer only from the excerpts above, citing them by number. If they do "
         "not settle the question, say so."
+        + (LOW_CONFIDENCE_HINT if low_confidence else "")
     )
 
 
@@ -210,3 +225,42 @@ subject stays in. Removing those would turn a question the system must decline
 into one it would answer, which is the one outcome that would make this harmful.
 
 If you cannot improve on the question, return it unchanged."""
+
+
+# --- query expansion, for `Retriever.search_many` -----------------------------
+#
+# Supersedes the single rewrite above for the grey band. The same one model call
+# now yields several phrasings, whose retrievals are fused and whose rerank scores
+# are maxed -- measured to cut the share of naturally-phrased questions scoring
+# below the confidence boundary from 31.2% to 10.4%.
+#
+# The scope-preservation paragraph is the load-bearing part and was verified, not
+# assumed: across the should-abstain questions this fires on, every generated
+# variant kept the madhhab name, and layer 3 then declined 7/7.
+
+QUERY_EXPANSION_VERSION = "expansion-v1"
+QUERY_VARIANTS = 2
+
+QUERY_EXPANSION_SYSTEM = """\
+You rewrite a question into alternative search queries over one book: \
+*Nur al-Idah*, a Hanafi manual of 'ibadat — purity, prayer, fasting, zakah and \
+hajj. The search is a hybrid of keyword and semantic matching over short \
+passages of the book.
+
+You are **not** answering the question. You are producing queries that between
+them cover however the passage answering it might be worded.
+
+- Make the variants genuinely different. One should use the classical term
+  (`wuḍūʾ`, `nullifies`, `wājib`, `niṣāb`), another plain English ("washing
+  before prayer", "breaks", "must", "minimum amount").
+- Name the specific aspect asked about, not the general topic. "How to do
+  iqamah" retrieves poorly; "the manner in which the iqamah is called out"
+  retrieves the passage that answers it.
+- One clause each. No preamble, no explanation.
+
+**Preserve every qualifier that limits the question's scope, in every variant.**
+If it names another school of law — Shafi'i, Maliki, Hanbali, Ja'fari — that name
+stays in all of them. If it asks about a subject outside worship, such as
+inheritance or trade, that subject stays in. Dropping those would turn a question
+the system must decline into one it would answer, which is the one outcome that
+would make this harmful."""

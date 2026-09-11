@@ -43,10 +43,11 @@ from pydantic import BaseModel
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ai_fiqh import llm, prompts, qa  # noqa: E402
-from ai_fiqh.index import MIN_RERANK_SCORE, Retriever  # noqa: E402
+from ai_fiqh.index import ABSTAIN_BELOW, MIN_RERANK_SCORE, Retriever  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_PATH = ROOT / "eval" / "golden-eval-set.json"
+NATURAL_PATH = ROOT / "eval" / "natural-phrasing-set.json"
 RESULTS_DIR = ROOT / "eval" / "results"
 
 # A verdict and a sentence of reasoning. Nothing here is long.
@@ -151,6 +152,7 @@ class Row:
     top_score: float = 0.0
     rewritten_query: str | None = None
     original_score: float | None = None
+    low_confidence: bool = False
     enumeration: bool = False
     seconds: float = 0.0
     answer: str = ""
@@ -158,10 +160,10 @@ class Row:
 
 
 def run_one(item: dict, retriever: Retriever, client, judge, gate: float,
-            rewrite: bool = True) -> Row:
+            rewrite: bool = True, grey_band: bool = True) -> Row:
     started = time.time()
     ans = qa.answer(item["question"], retriever=retriever, client=client, gate=gate,
-                    rewrite=rewrite)
+                    rewrite=rewrite, grey_band=grey_band)
 
     recall = None
     if item["expected_chunk_ids"]:
@@ -200,6 +202,7 @@ def run_one(item: dict, retriever: Retriever, client, judge, gate: float,
         unresolved_markers=ans.unresolved_markers,
         rewritten_query=ans.rewritten_query,
         original_score=ans.original_score,
+        low_confidence=ans.low_confidence,
         top_score=round(ans.trace.top_score, 4) if ans.trace else 0.0,
         enumeration=ans.enumeration,
         seconds=round(time.time() - started, 1),
@@ -208,7 +211,7 @@ def run_one(item: dict, retriever: Retriever, client, judge, gate: float,
 
 
 def run_one_safe(item: dict, retriever: Retriever, client, judge, gate: float,
-                 rewrite: bool = True) -> Row:
+                 rewrite: bool = True, grey_band: bool = True) -> Row:
     """`run_one`, but one question's failure cannot end a 42-question run.
 
     Added 2026-09-04 after an Azure content filter on a single Book of Purity
@@ -217,7 +220,7 @@ def run_one_safe(item: dict, retriever: Retriever, client, judge, gate: float,
     not measuring anything.
     """
     try:
-        return run_one(item, retriever, client, judge, gate, rewrite)
+        return run_one(item, retriever, client, judge, gate, rewrite, grey_band)
     except Exception as exc:  # noqa: BLE001 -- a harness must survive anything
         return Row(
             id=item["id"],
@@ -290,6 +293,15 @@ def report(rows: list[Row], gate: float, stamp: dict) -> dict:
         pct = f"{100 * num / den:5.1f}%" if den else "    --"
         print(f"  {name:<28} {num:>3}/{den:<3} {pct}")
 
+    greys = [r for r in rows if r.low_confidence]
+    if greys:
+        kept = [r for r in greys if r.behaviour_ok]
+        print(f"\n  grey band answered {len(greys)}/{len(rows)} instead of abstaining; "
+              f"{len(kept)} behaved correctly")
+        for r in greys:
+            print(f"      [{'ok  ' if r.behaviour_ok else 'FAIL'}] {r.id} "
+                  f"{r.top_score:.4f} {r.verdict:<11} {r.question[:52]}")
+
     errored = [r for r in rows if r.error]
     if errored:
         print(f"\n  !! {len(errored)} question(s) ERRORED and are counted as failures")
@@ -334,24 +346,57 @@ def report(rows: list[Row], gate: float, stamp: dict) -> dict:
 
 
 def sweep(golden: list[dict], retriever: Retriever) -> None:
-    """Gate threshold vs. its two error rates — retrieval only, no model calls.
+    """Both §1.7 layer-2 boundaries against their error rates — retrieval only.
 
-    §4's tuning dial. False abstention and missed abstention trade against each
-    other directly; pick the threshold off this table, not off intuition.
+    **Rewritten 2026-09-11 for the two-level gate.** This used to sweep one
+    threshold and report "missed abstain" for any should-abstain question above
+    it, which modelled the old design where the gate *was* the abstention
+    boundary. It no longer is:
+
+        score < ABSTAIN_BELOW   abstain in code
+        score < MIN_RERANK_SCORE answer, marked low-confidence, layer 3 decides
+        otherwise                answer
+
+    So the two boundaries do different jobs and have to be swept separately. The
+    first table is the one with teeth — a question below `ABSTAIN_BELOW` never
+    reaches a model, so a false abstention there is unrecoverable. The second
+    only decides how much traffic layer 3 is asked to adjudicate.
+
+    The natural-phrasing set is included when present, because the golden set
+    shares the corpus's vocabulary and understates false abstention roughly
+    fourfold (§4 correction in research.md).
     """
+    extra = []
+    if NATURAL_PATH.exists():
+        extra = json.loads(NATURAL_PATH.read_text(encoding="utf-8"))
+        print(f"including {len(extra)} naturally-phrased questions")
+
     scores: list[tuple[dict, float]] = []
-    for item in golden:
+    for item in golden + extra:
         trace = retriever.search(item["question"], expand=False)
         scores.append((item, trace.top_score))
+    pos = [(i, s) for i, s in scores if not i["should_abstain"]]
+    neg = [(i, s) for i, s in scores if i["should_abstain"]]
 
-    print(f"\n{'threshold':>10} {'false abstain':>14} {'missed abstain':>15} {'correct':>9}")
-    print("-" * 52)
-    for t in [x / 100 for x in range(50, 96, 5)]:
-        false_ab = sum(1 for i, s in scores if not i["should_abstain"] and s < t)
-        missed = sum(1 for i, s in scores if i["should_abstain"] and s >= t)
-        print(f"{t:>10.2f} {false_ab:>14} {missed:>15} "
-              f"{len(scores) - false_ab - missed:>9}/{len(scores)}")
-    print(f"\ncurrent MIN_RERANK_SCORE = {MIN_RERANK_SCORE}")
+    print(f"\n--- ABSTAIN_BELOW: below this, no model call is made at all ---")
+    print(f"{'threshold':>10} {'unrecoverable false abstain':>29} {'reaches the model':>19}")
+    print("-" * 62)
+    for t in [x / 100 for x in range(40, 81, 5)]:
+        lost = sum(1 for _, s in pos if s < t)
+        exposed = sum(1 for _, s in neg if s >= t)
+        print(f"{t:>10.2f} {lost:>22}/{len(pos):<5} {exposed:>14}/{len(neg)}")
+    print(f"  current ABSTAIN_BELOW = {ABSTAIN_BELOW}")
+
+    print(f"\n--- MIN_RERANK_SCORE: below this, answered but flagged low-confidence ---")
+    print(f"{'threshold':>10} {'answers flagged':>18} {'abstain-qs to layer 3':>23}")
+    print("-" * 56)
+    for t in [x / 100 for x in range(60, 96, 5)]:
+        flagged = sum(1 for _, s in pos if ABSTAIN_BELOW <= s < t)
+        to_l3 = sum(1 for _, s in neg if ABSTAIN_BELOW <= s < t)
+        print(f"{t:>10.2f} {flagged:>11}/{len(pos):<5} {to_l3:>16}/{len(neg)}")
+    print(f"  current MIN_RERANK_SCORE = {MIN_RERANK_SCORE}")
+    print("\n  Layer 3 declined 7/7 of the should-abstain questions in the band when")
+    print("  measured directly (2026-09-11); re-measure if either boundary moves.")
 
 
 def main() -> None:
@@ -366,6 +411,8 @@ def main() -> None:
                     help="grade with a different provider than the one under test")
     ap.add_argument("--no-rewrite", action="store_true",
                     help="disable the grey-band query rewrite, to measure against it")
+    ap.add_argument("--no-grey-band", action="store_true",
+                    help="abstain anywhere below the gate (pre-2026-09-11 behaviour)")
     ap.add_argument("--sweep", action="store_true", help="gate sweep, no model calls")
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
@@ -391,6 +438,7 @@ def main() -> None:
 
     stamp = {
         "rewrite": not args.no_rewrite,
+        "grey_band": not args.no_grey_band,
         "prompt_version": (
             prompts.QA_PROMPT_VERSION
             if client.supports_native_citations
@@ -406,7 +454,8 @@ def main() -> None:
         rows = list(
             pool.map(
                 lambda q: run_one_safe(q, retriever, client, judge, args.gate,
-                                       rewrite=not args.no_rewrite),
+                                       rewrite=not args.no_rewrite,
+                                       grey_band=not args.no_grey_band),
                 golden,
             )
         )

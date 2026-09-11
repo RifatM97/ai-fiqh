@@ -26,7 +26,7 @@ if __package__ in (None, ""):  # `streamlit run` executes this as a script
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ai_fiqh import llm, qa, revision
-from ai_fiqh.index import MIN_RERANK_SCORE, Retriever
+from ai_fiqh.index import ABSTAIN_BELOW, MIN_RERANK_SCORE, Retriever
 from ai_fiqh.normalize import display_title
 
 st.set_page_config(page_title="AI-Fiqh", page_icon="📖", layout="centered")
@@ -134,10 +134,10 @@ def render_answer(ans: qa.Answer) -> None:
             )
             reason = {
                 "low-confidence": (
-                    f"Nothing retrieved scored above the confidence gate "
-                    f"({MIN_RERANK_SCORE}); the best match was "
-                    f"{ans.trace.top_score:.3f} if a search ran. The abstention "
-                    f"itself is §1.7 layer 2, decided in code." + retried
+                    f"Nothing retrieved scored above {ABSTAIN_BELOW}, the level "
+                    f"below which the score genuinely does discriminate; the best "
+                    f"match was {ans.trace.top_score:.3f} if a search ran. The "
+                    f"abstention itself is §1.7 layer 2, decided in code." + retried
                 ),
                 "refusal": (
                     "The provider declined or filtered the request "
@@ -180,6 +180,19 @@ def render_answer(ans: qa.Answer) -> None:
         f"· pages {pages[0]}–{pages[-1]}"
         + (" · whole-section lookup (enumeration)" if ans.enumeration else "")
     )
+
+    if ans.low_confidence:
+        # Answered rather than abstained, but on weak retrieval. The reader is the
+        # one who can judge whether the cited passages are really about their
+        # question, so they have to be told that is in doubt.
+        st.warning(
+            f"**Low confidence.** Retrieval matched this question only weakly "
+            f"(best passage scored {ans.trace.top_score:.3f} against a "
+            f"{MIN_RERANK_SCORE} confidence boundary). The answer was generated "
+            f"anyway rather than withheld, but check the cited passages below are "
+            f"really about what you asked."
+            if ans.trace else "**Low confidence.** Retrieval matched only weakly."
+        )
 
     if ans.fallback_used:
         # Not a detail. The answer came from a different, weaker model than the

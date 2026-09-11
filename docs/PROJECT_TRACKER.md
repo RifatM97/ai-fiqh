@@ -1,12 +1,14 @@
 # AI-Fiqh — Project Tracker
 
-**Last updated:** 2026-09-10
+**Last updated:** 2026-09-11
 **Phase:** Build order complete — all ten steps of research.md §6 are done,
 including the Streamlit UI. No new components are outstanding, but "quality
-hardening" now understates what is open: **the confidence gate (§1.7 layer 2)
-does not work on questions phrased the way real users phrase them, and the
-golden set cannot measure that because it shares the corpus's vocabulary.**
-Read *2026-09-04 (cont.)* before trusting any eval number in this file. See
+hardening" is where the work is. The confidence gate (§1.7 layer 2), which did
+not work on naturally-phrased questions, was **rebuilt on 2026-09-11** into two
+boundaries with multi-query retrieval in between; the golden set now has a
+77-question phrasing-robustness companion. **Every number in this file is still
+self-graded**, and the golden set still shares the corpus's vocabulary — read
+*2026-09-11* and *2026-09-04 (cont.)* before trusting any of them. See
 *Still open* and *Next steps*.
 
 ---
@@ -38,8 +40,10 @@ Read *2026-09-04 (cont.)* before trusting any eval number in this file. See
 | `app.py` — Streamlit UI (§2.1) | Done ✅ — **build order complete**, verified end-to-end via `AppTest` |
 | `llm.py` — provider abstraction | Done ✅ 2026-09-02 — Azure OpenAI (default), Ollama, Anthropic |
 | §1.7 layer 1 — citations | **Rebuilt** ⚠️ 2026-09-02 — `[n]` markers resolved in code; weaker than the API-native guarantee it replaced |
-| §1.7 layer 2 — confidence gate | **Not sound** ❌ 2026-09-04 — scores phrasing, not answerability; classes do not separate under any threshold |
-| Golden set | 42 questions ⚠️ — shares the corpus's vocabulary, so it cannot measure the gate's real failure mode |
+| §1.7 layer 2 — confidence gate | **Rebuilt** ✅ 2026-09-11 — two boundaries: `ABSTAIN_BELOW` 0.60 in code, `MIN_RERANK_SCORE` 0.74 now a confidence flag; grey band goes to layer 3 (7/7 declined) |
+| Multi-query retrieval | Done ✅ 2026-09-11 — `Retriever.search_many`, grey band only; 31.2% → 10.4% below the boundary on natural phrasing |
+| Natural-phrasing set | Done ✅ 2026-09-11 — 77 questions, `eval/natural-phrasing-set.json`; an approximation of option 4, not a user study |
+| Golden set | 42 questions ⚠️ — shares the corpus's vocabulary; `Q01`'s reference answer is **wrong** (three farḍ acts of ghusl vs the book's eleven), awaiting review |
 | Azure content filter | **Worked around** ✅ 2026-09-10 — 2/177 chunks refused under `violence` (p84-86, p142-143); resolved by `llm.FallbackClient`, user-verified |
 | Ollama fallback | Done ✅ 2026-09-10 — `gemma4:12b`, fires only on a content-filter refusal, substitute model surfaced to the reader |
 
@@ -839,6 +843,11 @@ mitigation, not a fix.
    the book.** Upstream of the other three — none of them can be calibrated
    against a set that shares the corpus's vocabulary.
 
+> **All four resolved 2026-09-11 — see that entry.** 1 and 3 implemented, 2
+> **refuted by measurement** (every scale-free signal scored worse; margins are
+> incompatible with §1.3 group expansion), 4 approximated by
+> `eval/natural-phrasing-set.json` and still open in its original form.
+
 ### A framing correction worth keeping
 
 False abstention has been treated as the safe failure, on the grounds that
@@ -1003,6 +1012,175 @@ Acceptable for a fallback firing on a handful of questions; not as a primary.
   go through `FallbackClient.parse`, which falls back silently — no equivalent of
   `answered_by` reaches `MCQ` or `Flashcard`. Acceptable for practice material,
   worth knowing.
+
+## 2026-09-11 — the four gate options, worked through
+
+All four options from *2026-09-04 (cont.)* are now resolved: **two implemented,
+one refuted by measurement, one approximated.** Headline: golden set
+**41/42 behaviour, false abstention 0/26, abstention 16/16, recall@context 26/26**
+— the best run recorded, and the first where no answerable question is falsely
+abstained.
+
+### Option 4 first, because the other three depend on it
+
+`eval/make_natural_set.py` -> `eval/natural-phrasing-set.json`, **77 questions.**
+
+It is **not** the user study the option asked for, and the docstring says so: a
+model that has read the corpus cannot produce questions from someone who has not.
+What it does instead is enforce the property that actually matters, in code rather
+than by intention — *a variant is kept only if it shares less of the source
+passage's vocabulary than the golden question does.* Mean overlap reduction
+**32.1%**.
+
+It paid for itself immediately, converting three anecdotes into a measurement:
+
+| | false abstention at the 0.74 gate |
+|---|---|
+| 42-question golden set | 7.7% |
+| 77 naturally-phrased | **31.2%** |
+
+### Option 2 — ⚑ refuted, and do not revisit without new evidence
+
+`eval/gate_signals.py` measured seven candidate signals over 103 answerable
+questions against the 16 should-abstain ones, scored by the false-abstention cost
+at the strictest threshold that still abstains on everything it must:
+
+| signal | AUC | false abstention |
+|---|---|---|
+| **top (what we already had)** | **0.942** | **21.4%** |
+| margin to #2 | 0.830 | 68.0% |
+| margin to tail | 0.907 | 63.1% |
+| ratio to tail | 0.850 | 65.0% |
+| z-score of top | 0.618 | 78.6% |
+| mean of top 2 | 0.905 | 36.9% |
+| top + margin | 0.944 | 35.9% |
+
+**Every scale-free signal is worse, and the reason is structural rather than
+incidental.** §1.3 group expansion deliberately puts both halves of a polarity
+pair at the top, so:
+
+```
+Q41 "does bleeding from the mouth break wudu?"   margin to #2 = 0.0156
+    ^ retrieval PERFECT, both halves of wudu-nullifiers at #1 and #2
+Q35  cross-madhhab bait, must be declined        margin to #2 = 0.1133
+```
+
+A margin ranks a correct polarity retrieval **below** cross-madhhab bait.
+**§1.3 and margin-based confidence are incompatible.** The absolute score stays.
+
+Worth noting this is the second time measurement has killed an attractive idea
+here, after the MCQ option-phrasing check in §2.3. Both were cheap to measure and
+would have been expensive to ship.
+
+### Option 3 — implemented: one threshold became two
+
+```
+score < ABSTAIN_BELOW (0.60)    abstain in code, no model call
+score < MIN_RERANK_SCORE (0.74) answer, flagged low-confidence, layer 3 decides
+otherwise                       answer
+```
+
+`MIN_RERANK_SCORE` is now a **confidence** boundary, not an abstention boundary.
+Checked before the change rather than after — is the *right chunk* actually
+retrieved in each band?
+
+| band | n | #1 chunk is the labelled one |
+|---|---|---|
+| below 0.60 | 2 | **0%** |
+| 0.60 – 0.74 (grey) | 24 | **79%** |
+| above 0.74 | 77 | **79%** |
+
+**Retrieval in the grey band is exactly as good as above the gate.** The score
+differs; the retrieval does not. Abstaining there was discarding correct context.
+
+Two of the five grey-band "misses" are not misses: one retrieved a different
+*part* of the right section (which `get_section` merges) and one retrieved the
+polarity *sibling* (which group expansion supplies anyway).
+
+**A recommendation I talked myself out of, on the evidence.** The sweep shows
+`ABSTAIN_BELOW = 0.55` would lose 0/103 instead of 2/103, so lowering it looked
+free. It is not: both questions below 0.60 are cases where **retrieval genuinely
+failed** — the labelled chunk was not returned at all —
+
+```
+Q05N3  want 036-the-prerequisites-of-salah...p1   got 062-nonobligatory-prayers
+Q42N3  want 033-adhan                             got 034-mustahabbat
+```
+
+so lowering the floor would not rescue them, it would feed the model the **wrong
+passage** and invite a confident answer about an unrelated ruling. Abstaining is
+correct. **0.60 stays.**
+
+Safety, measured rather than argued. The 16 should-abstain questions split 9
+below the floor and 7 in the grey band, and **all 7 are cross-madhhab bait** —
+precisely what layer 3's authority boundary is written for. Forced past the gate
+and graded with the harness's own abstention judge: **7/7 declined, 0 leaked.**
+No genuinely out-of-scope question (inheritance, criminal law, waqf) reaches a
+model at all.
+
+Surfaced, not silent: `Answer.low_confidence`, a warning in the Streamlit UI, a
+line in `Answer.show()`, and `--no-grey-band` to A/B it.
+
+### Option 1 — implemented: multi-query retrieval replaced the single rewrite
+
+`Retriever.search_many(queries)` fuses candidates across several phrasings with
+the RRF that already existed, then takes each chunk's **best** score across those
+phrasings. The maximum is the load-bearing half: reranking the fused set against
+the original wording alone would reintroduce exactly the sensitivity being
+removed.
+
+| | below the 0.74 boundary, on 77 naturally-phrased questions |
+|---|---|
+| single query | 24/77 (31.2%) |
+| **multi-query max** | **8/77 (10.4%)** |
+
+Mean lift +0.0410, helped 57/77, 16 rescued across the boundary. It improves
+*separation* rather than inflating everything: on the golden set the answerable
+class gained +0.0143 against the should-abstain class's +0.0076, and AUC went
+0.986 -> 1.000.
+
+It is spent **only in the grey band**, not on every question, because it costs one
+embedding and one rerank per phrasing. `prompts.QUERY_EXPANSION_SYSTEM` keeps the
+scope-preservation paragraph that the single-rewrite prompt had, and it held:
+every variant generated for a cross-madhhab question kept the madhhab name.
+
+`eval/run_eval.py --sweep` was rewritten to sweep **both** boundaries, since it
+was still modelling the old single-threshold design and reporting "missed
+abstain" for questions the new design deliberately sends to layer 3.
+
+### The one remaining eval failure is a bad label, not a model error
+
+`Q01` asks for the farḍ acts of ghusl. Its reference answer lists **three**. The
+book says:
+
+> "Eleven things are deemed farḍ in ghusl: 1&2) To wash the mouth and the nose,
+> 3) To wash the entire body once, 4) the internal portion of the foreskin…"
+
+and enumerates eleven. The model answered with eleven, correctly, and the judge
+marked it `contradicts` against the reference.
+
+**This was hidden by infrastructure.** Azure's content filter made Q01 fail as a
+`refusal` in every prior run, so nobody checked the reference. An infrastructure
+failure was masking a data error — an argument for fixing loud failures before
+trusting anything downstream of them.
+
+**Not fixed here.** Editing ground truth in the corpus's own domain is the
+maintainer's call, not a code change. Left for review.
+
+### Still open
+
+- **`Q01`'s reference answer needs a decision** (three classic farḍ acts vs the
+  book's enumerated eleven). Until then the eval reads 41/42 rather than 42/42.
+- **The natural-phrasing set is an approximation.** Option 4 as written — real
+  questions from people who have not read the book — is still open, and remains
+  the thing that would let these thresholds be trusted rather than merely
+  measured.
+- **Still self-graded.** Every number above comes from the model under test.
+- **`eval/gate-scores.json` is a cache**, not a result. Re-run
+  `gate_signals.py --collect` after any ingest or retrieval change.
+- **Cost of the grey band.** A question landing in 0.60–0.74 now costs one extra
+  LLM call and three extra Voyage round trips. It fired on 5/42 of the golden
+  set; on naturally-phrased traffic it will fire more often.
 
 ## Environment
 
@@ -1527,11 +1705,15 @@ components:
   against 3/3 on questions asked spontaneously. **Every threshold decision
   depends on this, and none of the gate options below can be calibrated until it
   exists.** Still also add harder/ambiguous/terse cases, prioritising Hajj.
-- **Decide what replaces the absolute confidence gate** (see *2026-09-04 (cont.)*
-  — the classes provably do not separate under any threshold). Four options
-  recorded there: multi-query retrieval with RRF fusion, a margin-based signal,
-  routing the grey band to layer 3, or some combination. Do not retune
-  `MIN_RERANK_SCORE` as if it were a tuning problem.
+- ~~**Decide what replaces the absolute confidence gate**~~ — **done 2026-09-11.**
+  Two boundaries, multi-query retrieval in the grey band, margin-based signals
+  refuted by measurement. See *2026-09-11*.
+- **⚑ `Q01`'s reference answer contradicts the book** — it lists three farḍ acts
+  of ghusl; p19 says "Eleven things are deemed farḍ" and enumerates eleven. A
+  fiqh decision, so left for review. The eval reads 41/42 until it is settled.
+- **Watch the grey band's cost.** A question scoring 0.60–0.74 now spends one
+  extra LLM call and three Voyage round trips. It fired on 5/42 of the golden
+  set; naturally-phrased traffic will trigger it more often.
 - ~~**Azure content filter blocks `019-things-which-do-not-necessitate-ghusl`**~~
   — **resolved 2026-09-10.** A custom filter policy fixed the `sexual` category;
   the two remaining refusals are `violence` false positives (Friday-sermon sword,

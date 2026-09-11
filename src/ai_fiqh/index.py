@@ -74,6 +74,32 @@ RRF_K = 60  # standard reciprocal-rank-fusion damping constant
 # for; do not let a good number here talk you out of them.
 MIN_RERANK_SCORE = 0.74
 
+# **What this threshold means changed on 2026-09-11.** It used to be the
+# abstention boundary: below it, no model call. Measurement killed that reading.
+# On 103 answerable questions (42 golden + 77 naturally-phrased, see
+# `eval/natural-phrasing-set.json`) against the 16 should-abstain ones:
+#
+#   * no threshold on this score separates the classes -- the lowest genuinely
+#     answerable score observed, 0.7070, sits below the highest should-abstain
+#     score, 0.7188;
+#   * at 0.74, **31% of naturally-phrased answerable questions are falsely
+#     abstained**, against 7.7% of the golden ones that share the book's wording;
+#   * every scale-free alternative measured *worse* (`eval/gate_signals.py`):
+#     margin to #2 costs 68% false abstention against this signal's 21%, because
+#     §1.3 group expansion puts both halves of a polarity pair at the top and a
+#     margin reads that as ambiguity.
+#
+# So it is now a **confidence boundary, not an abstention boundary**. Below
+# ABSTAIN_BELOW the pipeline still abstains in code. Between the two, the answer
+# is generated and marked low-confidence, and §1.7 layer 3 decides -- measured
+# 7/7 correct declines on the cross-madhhab questions that band contains.
+#
+# Of the 16 should-abstain questions, 9 sit below ABSTAIN_BELOW and the other 7
+# are **all cross-madhhab bait**, which is precisely what layer 3's authority
+# prompt is written for. No genuinely out-of-scope question (inheritance,
+# criminal law, waqf) reaches the model.
+ABSTAIN_BELOW = 0.60
+
 
 def load_env() -> None:
     """Load `.env` from the repo root. Safe to call repeatedly."""
@@ -271,6 +297,10 @@ class SearchTrace:
 
     query: str
     expanded_query: str
+    # Set by `search_many`: every phrasing whose retrieval contributed. The BM25
+    # and dense stages below then show only the primary query's ranking, because
+    # the fused candidate set is what the later stages actually operate on.
+    queries: list[str] = field(default_factory=list)
     bm25: list[Scored] = field(default_factory=list)
     dense: list[Scored] = field(default_factory=list)
     fused: list[Scored] = field(default_factory=list)
@@ -456,6 +486,85 @@ class Retriever:
 
         trace.reranked = self.rerank(query, trace.fused, top_k)
         trace.results = self.expand_groups(trace.reranked) if expand else list(trace.reranked)
+        return trace
+
+    def search_many(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = TOP_K,
+        candidates: int = CANDIDATES,
+        expand: bool = True,
+    ) -> SearchTrace:
+        """Retrieve for several phrasings of one question and keep the best of each.
+
+        The §1.7 layer-2 problem in one sentence: a cross-encoder's score moves
+        when a synonym does. Measured on three phrasings of one question, all
+        retrieving the same chunk at rank #1, the score ran 0.7070 / 0.7227 /
+        0.7734 — and only the phrasing that echoed the book's own wording cleared
+        the gate. A single query is therefore a single sample of a noisy
+        measurement, and the fix is to take more than one sample.
+
+        Two stages combine the phrasings, and both are needed:
+
+        * **Candidates** are fused across every query with the same RRF used for
+          BM25-vs-dense. Rank-based fusion is what makes this safe — the scales
+          never have to be reconciled.
+        * **Scores** are the *maximum* a chunk achieved against any phrasing. This
+          is the part that matters: reranking the fused set against the original
+          wording alone would reintroduce exactly the sensitivity being removed.
+
+        Measured on 77 naturally-phrased questions, this cut the share scoring
+        below the confidence boundary from 31.2% to 10.4%, and it lifts the
+        answerable class roughly twice as much as the should-abstain class
+        (+0.0143 against +0.0076 on the golden set), so it improves separation
+        rather than merely inflating every score.
+
+        Costs one embedding and one rerank call per phrasing, so callers should
+        reserve it for questions that need it rather than spending it on every
+        question.
+        """
+        if not queries:
+            raise ValueError("search_many needs at least one query")
+        primary = queries[0]
+        trace = SearchTrace(
+            query=primary,
+            expanded_query=expand_aliases(primary),
+            queries=list(queries),
+        )
+
+        rankings: list[list[Scored]] = []
+        for n, q in enumerate(queries):
+            bm25 = self.search_bm25(q, candidates)
+            dense = self.search_dense(q, candidates)
+            rankings.extend((bm25, dense))
+            if n == 0:  # the trace shows the primary query's own stages
+                trace.bm25, trace.dense = bm25, dense
+
+        fused_scores = reciprocal_rank_fusion(rankings)
+        ordered = sorted(fused_scores.items(), key=lambda kv: kv[1], reverse=True)
+        trace.fused = [
+            Scored(self.chunks[self._by_id[cid]], score, rank + 1, "rrf")
+            for rank, (cid, score) in enumerate(ordered[:candidates])
+        ]
+
+        # Best score any phrasing gave each candidate. `top_k=len(trace.fused)`
+        # asks the reranker to score the whole candidate set rather than return
+        # its own top slice, so nothing is dropped before the max is taken.
+        best: dict[str, Scored] = {}
+        for q in queries:
+            for scored in self.rerank(q, trace.fused, top_k=len(trace.fused)):
+                if scored.id not in best or scored.score > best[scored.id].score:
+                    best[scored.id] = scored
+        trace.reranked = [
+            replace(s, rank=rank + 1)
+            for rank, s in enumerate(
+                sorted(best.values(), key=lambda s: s.score, reverse=True)[:top_k]
+            )
+        ]
+        trace.results = (
+            self.expand_groups(trace.reranked) if expand else list(trace.reranked)
+        )
         return trace
 
     def get_section(self, chunk_id: str) -> list[dict]:

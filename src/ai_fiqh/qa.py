@@ -30,9 +30,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import llm, prompts
-from .index import MIN_RERANK_SCORE, Retriever, SearchTrace
+from .index import ABSTAIN_BELOW, MIN_RERANK_SCORE, Retriever, SearchTrace
 from .normalize import fold
-from .schemas import RewrittenQuery
+from .schemas import QueryVariants
 
 # Answer length. These are short answers; the ceiling exists to bound cost and to
 # leave room in a small context window, not because answers approach it.
@@ -42,14 +42,16 @@ MAX_TOKENS = 2_000
 # titles, separators, the question, and the instruction tail.
 CONTEXT_SLACK = 512
 
-# The grey band: retrieval that nearly cleared the gate, where a rephrasing is
-# worth one cheap call before giving up. Below this, nothing relevant was found
-# and rewriting is throwing money at a question the book does not answer.
+# The grey band runs from `ABSTAIN_BELOW` up to the gate. Two things happen in it,
+# in order: one rephrasing is attempted, and if that still does not clear the
+# gate the question is answered anyway, marked low-confidence, with §1.7 layer 3
+# deciding whether the excerpts actually settle it.
 #
-# 0.60 is chosen against the measured distribution rather than by feel. On the
-# golden set the should-abstain median is 0.5586, so most genuinely out-of-scope
-# questions sit below the floor and never trigger a call at all.
-REWRITE_FLOOR = 0.60
+# Both the floor and that routing are measured, not chosen by feel — see the note
+# on `index.MIN_RERANK_SCORE`. In short: 9 of the 16 should-abstain questions sit
+# below the floor and never reach the model; the 7 in the band are all
+# cross-madhhab bait, and layer 3 declined 7/7 of them when tested directly.
+REWRITE_FLOOR = ABSTAIN_BELOW
 REWRITE_MAX_TOKENS = 200
 
 # §2.2: enumeration questions ("list the fard acts of wudu") need the *whole*
@@ -112,8 +114,11 @@ class Answer:
     # Set when the grey-band rewrite fired and improved retrieval. `original_
     # score` is what the user's own wording scored, kept so the eval can measure
     # whether rewriting is earning its call.
-    rewritten_query: str | None = None
+    query_variants: list[str] = field(default_factory=list)
     original_score: float | None = None
+    # Retrieval landed in the grey band: answered, but on excerpts that matched
+    # only weakly. Not an error and not an abstention -- a caveat the reader gets.
+    low_confidence: bool = False
     # Excerpts the context budget could not fit. Nonzero means the model answered
     # from less than retrieval found, which is worth surfacing, not swallowing.
     context_dropped: int = 0
@@ -131,6 +136,11 @@ class Answer:
     @property
     def pages_in_context(self) -> set[int]:
         return _pages_covered(self.chunks)
+
+    @property
+    def rewritten_query(self) -> str | None:
+        """The variants as one readable string, for display and for eval rows."""
+        return " | ".join(self.query_variants) or None
 
     @property
     def citation_ok(self) -> bool:
@@ -165,6 +175,10 @@ class Answer:
             after = f" -> {self.trace.top_score:.4f}" if self.trace else ""
             print(f"\nretrieval used a rewritten query: {self.rewritten_query!r}"
                   f"  (score {self.original_score:.4f}{after})")
+        if self.low_confidence:
+            scored = (f" — retrieval scored {self.trace.top_score:.4f} against the "
+                      f"{MIN_RERANK_SCORE} confidence boundary" if self.trace else "")
+            print(f"\n!! LOW CONFIDENCE{scored}")
         if self.fallback_used:
             print(f"\n!! answered by {self.answered_by} — the primary provider's "
                   f"content filter refused this prompt")
@@ -336,13 +350,13 @@ def verify_citations(text: str, chunks: list[dict]) -> list[int]:
 # --- query rewriting ----------------------------------------------------------
 
 
-def rewrite_query(question: str, client: Any) -> str | None:
-    """A better *search query* for a question that nearly cleared the gate.
+def expand_query(question: str, client: Any) -> list[str]:
+    """Alternative phrasings for a question whose retrieval scored in the grey band.
 
-    Returns None when the model declines to improve it, returns it unchanged, or
-    fails outright — a failed rewrite must degrade to the original abstention,
-    never to an exception, because this runs on the path of a question that was
-    about to be answered with "the book does not cover this".
+    Returns `[]` when the model declines, repeats the question, or fails outright
+    — a failed expansion must degrade to the original retrieval, never to an
+    exception, because this runs on the path of a question that is about to be
+    answered with a caveat or not at all.
 
     **This does not weaken layer 2.** The abstention decision is still made in
     code, on a reranker score, after this returns; all this changes is which
@@ -351,24 +365,30 @@ def rewrite_query(question: str, client: Any) -> str | None:
     """
     try:
         result = client.parse(
-            prompts.QUERY_REWRITE_SYSTEM,
-            question,
-            RewrittenQuery,
+            prompts.QUERY_EXPANSION_SYSTEM,
+            f"Question: {question}\n\n"
+            f"Write {prompts.QUERY_VARIANTS} alternative search queries.",
+            QueryVariants,
             max_tokens=REWRITE_MAX_TOKENS + client.thinking_reserve,
         )
     except llm.LLMError:
-        return None
-    candidate = result.query.strip()
-    if not candidate or fold(candidate) == fold(question):
-        return None
-    return candidate
+        return []
+    seen = {fold(question)}
+    out: list[str] = []
+    for variant in result.variants[: prompts.QUERY_VARIANTS]:
+        variant = variant.strip()
+        key = fold(variant)
+        if variant and key not in seen:
+            seen.add(key)
+            out.append(variant)
+    return out
 
 
 # --- the pipeline -------------------------------------------------------------
 
 
 def _ask(
-    client: Any, chunks: list[dict], question: str
+    client: Any, chunks: list[dict], question: str, *, low_confidence: bool = False
 ) -> tuple[llm.Completion, list[Citation], list[int]]:
     """One model call, returning text plus provenance however the provider gives it."""
     max_tokens = _max_tokens(client)
@@ -396,7 +416,9 @@ def _ask(
 
     completion = client.complete(
         prompts.QA_SYSTEM_MARKERS,
-        prompts.format_question_with_excerpts(question, chunks),
+        prompts.format_question_with_excerpts(
+            question, chunks, low_confidence=low_confidence
+        ),
         max_tokens=max_tokens,
     )
     citations, unresolved = resolve_markers(completion.text, chunks)
@@ -410,39 +432,26 @@ def answer(
     client: Any = None,
     gate: float = MIN_RERANK_SCORE,
     rewrite: bool = True,
+    grey_band: bool = True,
 ) -> Answer:
     """Answer one question, or abstain.
 
     `gate` is exposed so the eval harness can sweep the §1.7 layer-2 threshold
-    against false-abstention rate without editing module state. `rewrite` is
-    exposed for the same reason — so the grey-band retry can be measured against
-    its own absence rather than assumed to help.
+    against false-abstention rate without editing module state. `rewrite` and
+    `grey_band` are exposed for the same reason — so each can be measured against
+    its own absence rather than assumed to help. `grey_band=False` restores the
+    pre-2026-09-11 behaviour of abstaining anywhere below `gate`.
     """
     r = retriever if retriever is not None else Retriever(verbose=False)
     trace = r.search(question)
 
-    # --- Grey band: one rephrasing before giving up (§1.5) -------------------
-    # Retrieval frequently succeeds while the *score* misses. Measured
-    # 2026-09-03: "does bleeding from the mouth break wudu?" put the exactly
-    # correct chunk at rerank #1 and still abstained, by 0.0017.
-    rewritten_query: str | None = None
-    original_score: float | None = None
-    if rewrite and REWRITE_FLOOR <= trace.top_score < gate:
-        if client is None:
-            client = llm.get_client()
-        candidate = rewrite_query(question, client)
-        if candidate:
-            retried = r.search(candidate)
-            # Keep the rephrasing only if it actually retrieved better. A rewrite
-            # that scores worse is discarded silently -- the user asked the first
-            # question, and there is no reason to answer a worse one.
-            if retried.top_score > trace.top_score:
-                original_score, rewritten_query, trace = (
-                    trace.top_score, candidate, retried
-                )
-
-    # --- Layer 2: abstain in code, before any answer is generated ------------
-    if trace.top_score < gate:
+    # --- Layer 2, part one: abstain in code where the signal is trustworthy ---
+    # Below this the score genuinely does discriminate: 9 of 16 should-abstain
+    # questions live here, including every out-of-scope one, and only 2 of 103
+    # answerable questions do. No model call, and no rephrasing either -- the
+    # book does not answer this.
+    floor = min(ABSTAIN_BELOW, gate) if grey_band else gate
+    if trace.top_score < floor:
         return Answer(
             question=question,
             text=prompts.ABSTENTION_LOW_CONFIDENCE,
@@ -450,7 +459,47 @@ def answer(
             abstain_reason="low-confidence",
             trace=trace,
             chunks=[],
-            rewritten_query=rewritten_query,
+        )
+
+    # --- Grey band: retrieve again over several phrasings (§1.5) --------------
+    # Retrieval frequently succeeds while the *score* misses. Measured
+    # 2026-09-03: "does bleeding from the mouth break wudu?" put the exactly
+    # correct chunk at rerank #1 and still abstained, by 0.0017. One rephrasing
+    # was the first fix; fusing several (`search_many`) measured better, cutting
+    # the share of naturally-worded questions below the boundary from 31% to 10%.
+    query_variants: list[str] = []
+    original_score: float | None = None
+    if rewrite and trace.top_score < gate:
+        if client is None:
+            client = llm.get_client()
+        variants = expand_query(question, client)
+        if variants:
+            # The original question stays first, so it contributes its own ranking
+            # and the trace stays readable.
+            retried = r.search_many([question, *variants])
+            # Keep it only if it actually retrieved better. Worse is discarded
+            # silently -- the user asked the first question, and there is no
+            # reason to answer a worse version of it.
+            if retried.top_score > trace.top_score:
+                original_score, query_variants, trace = (
+                    trace.top_score, variants, retried
+                )
+
+    # --- Layer 2, part two: the grey band goes to the model, not to silence ---
+    # Everything from `floor` up to `gate` is where the score cannot discriminate
+    # (see `index.MIN_RERANK_SCORE`). Abstaining here cost 31% of naturally-worded
+    # answerable questions. Answering here instead hands the judgement to layer 3,
+    # which is what the authority prompt exists for, and flags the answer.
+    low_confidence = trace.top_score < gate
+    if low_confidence and not grey_band:
+        return Answer(
+            question=question,
+            text=prompts.ABSTENTION_LOW_CONFIDENCE,
+            abstained=True,
+            abstain_reason="low-confidence",
+            trace=trace,
+            chunks=[],
+            query_variants=query_variants,
             original_score=original_score,
         )
 
@@ -481,7 +530,9 @@ def answer(
     )
     chunks, dropped = fit_to_context(chunks, client, system, question)
 
-    completion, citations, unresolved = _ask(client, chunks, question)
+    completion, citations, unresolved = _ask(
+        client, chunks, question, low_confidence=low_confidence
+    )
 
     # A provider may decline outright — an Anthropic refusal stop reason, or an
     # Azure content filter. Check before reading the (empty) content.
@@ -495,8 +546,9 @@ def answer(
             trace=trace,
             enumeration=enumeration,
             context_dropped=dropped,
-            rewritten_query=rewritten_query,
+            query_variants=query_variants,
             original_score=original_score,
+            low_confidence=low_confidence,
             stop_reason=completion.stop_reason,
             prompt_version=prompt_version,
             provider=client.provider,
@@ -516,8 +568,9 @@ def answer(
         context_dropped=dropped,
         answered_by=completion.answered_by or llm.describe(client),
         fallback_used=completion.fallback_used,
-        rewritten_query=rewritten_query,
+        query_variants=query_variants,
         original_score=original_score,
+        low_confidence=low_confidence,
         stop_reason=completion.stop_reason,
         usage=completion.usage,
         prompt_version=prompt_version,

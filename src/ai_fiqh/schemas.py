@@ -110,6 +110,17 @@ class ValidationFailure(BaseModel):
     detail: str
 
 
+class QueryVariants(BaseModel):
+    """Alternative phrasings of one question, for `Retriever.search_many`.
+
+    Plural rather than singular because a cross-encoder score is one noisy sample
+    of relevance -- it moves when a synonym does -- and several phrasings are how
+    you take several samples. See `qa.expand_query`.
+    """
+
+    variants: list[str] = Field(description="Alternative search queries, one clause each")
+
+
 class RewrittenQuery(BaseModel):
     """A retrieval-only rephrasing of a user question (`qa.rewrite_query`).
 

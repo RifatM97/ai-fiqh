@@ -25,70 +25,50 @@ VOYAGE_API_KEY=...
 AI_FIQH_LLM_PROVIDER=azure         # azure | ollama | anthropic
 AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
 AZURE_OPENAI_API_KEY=...
-AZURE_OPENAI_DEPLOYMENT=<your deployment name>
+AZURE_OPENAI_DEPLOYMENT=gpt-5.4    # your deployment's name, not the model id
 
-# Optional, and recommended on Azure — see "When the content filter refuses"
+# Recommended on Azure — see "When the content filter refuses"
 AI_FIQH_LLM_FALLBACK_PROVIDER=ollama
+```
+
+`AZURE_OPENAI_DEPLOYMENT` is whatever you named the deployment in the Azure
+portal, so nothing about the underlying model can be read off it — which is why
+`llm.AzureClient` discovers the parameter dialect from the API's own 400 rather
+than from a lookup table. The Ollama fallback needs the model pulled once:
+
+```bash
+ollama pull gemma4:12b
 ```
 
 Embeddings build themselves on first search (~8s) and cache to `index/`.
 
-## Model providers
+## Models in use
+
+**Answers come from `gpt-5.4` on Azure OpenAI, with `gemma4:12b` on local Ollama
+as a fallback.** Retrieval is Voyage AI in every configuration — `voyage-4-large`
+for embeddings, `rerank-2.5` for reranking — and is unaffected by the generation
+provider.
 
 Generation goes through `src/ai_fiqh/llm.py`, so the provider is a setting rather
-than a rewrite. Retrieval is unaffected either way — it is Voyage in all three.
+than a rewrite:
 
-| `AI_FIQH_LLM_PROVIDER` | Needs | Context | Notes |
+| `AI_FIQH_LLM_PROVIDER` | Model | Context | Role |
 |---|---|---|---|
-| `azure` *(default)* | `AZURE_OPENAI_ENDPOINT`, `_API_KEY`, `_DEPLOYMENT` | 128k | Strict JSON-schema structured output. Optional `_API_VERSION`, `_CONTEXT_TOKENS`. |
-| `ollama` | `ollama serve` + a pulled model | 16k as configured | Free and offline, and **no content filter**. `OLLAMA_MODEL` (default `gemma4:12b`), `OLLAMA_HOST`, `OLLAMA_CONTEXT_TOKENS`, `OLLAMA_THINKING_RESERVE`. |
-| `anthropic` | `ANTHROPIC_API_KEY`, `uv sync --group cloud` | 200k | The only one with API-native citations; kept for comparison. |
+| `azure` *(default)* | **`gpt-5.4`** | 128k | Primary. Strict JSON-schema structured output. Optional `AZURE_OPENAI_API_VERSION`, `_CONTEXT_TOKENS`. |
+| `ollama` | **`gemma4:12b`** | 16k as configured | Content-filter fallback, and the free/offline option. `OLLAMA_MODEL`, `OLLAMA_HOST`, `OLLAMA_CONTEXT_TOKENS`, `OLLAMA_THINK`, `OLLAMA_THINKING_RESERVE`. |
+| `anthropic` | `claude-opus-5` | 200k | The original, and the only one with API-native citations. Kept runnable so the replacement has something to be measured against. Needs `uv sync --group cloud`. |
 
-### When the content filter refuses
+Two things worth knowing about the local model. **`gemma4:12b` is a reasoning
+model** — it returns `thinking` alongside `content`, and Ollama's `num_predict`
+caps the two together, so a ceiling sized for the answer alone comes back empty.
+Thinking is therefore **off by default**: with it on, the reserve it needs takes
+roughly 3,000 tokens off the excerpt budget, which is enough to start trimming
+retrieved context. Set `OLLAMA_THINK=1` to re-enable it and raise
+`OLLAMA_CONTEXT_TOKENS` to match.
 
-Azure's content filter rejects part of this corpus. `Nur al-Idah`'s Book of
-Purity covers ghusl after intercourse, menstruation and istihadah in the clinical
-register a 17th-century jurist would use, and Azure scores
-`019-things-which-do-not-necessitate-ghusl` (p19) as `sexual: medium` and refuses
-**the whole prompt** — the book's own text, not the question and not the answer.
-Configuring a custom filter did not lift it.
-
-Left alone, that surfaces as the system telling a user *"Nur al-Idah does not
-appear to address this"* about a ruling printed on p19 — a false statement about
-the book, which costs more credibility than it saves.
-
-So `AI_FIQH_LLM_FALLBACK_PROVIDER` names a second provider used for **exactly**
-that case:
-
-```
-Azure returns a content-filter refusal  ->  retry the same prompt on Ollama
-anything else (rate limit, outage, 400) ->  fail normally
-```
-
-It is deliberately narrow. Falling back on transient errors would mask outages,
-and falling back on a genuine model refusal would defeat §1.7 layer 3. The
-substitute model is named on the answer (`Answer.answered_by`) and shown as a
-warning in the UI, because a reader is entitled to know a different, weaker model
-produced it. Retrieval and every citation check are unchanged.
-
-Two constraints, enforced at construction: both providers must agree on citation
-style (otherwise one receives a prompt built for the other's scheme), and the
-context budget uses the **smaller** of the two windows, since the prompt is built
-before anyone knows which provider will answer it.
-
-**Citations work differently off Anthropic.** Anthropic returns citations as
-structural objects that cannot point outside the documents supplied. Everywhere
-else the excerpts are numbered and the model cites `[n]` — so `qa.resolve_markers`
-maps each marker back to its chunk and *reports the ones that resolve to
-nothing*. A model citing `[9]` over five excerpts is caught rather than silently
-dropped. The guarantee moved from the API into code.
-
-**Small windows are budgeted, not hoped for.** `qa.fit_to_context` trims the
-excerpt set to what the selected model can hold, dropping from the tail so the
-top hit and its polarity siblings survive. This is a no-op on Azure and
-Anthropic; on an 8k local model it only bites on the enumeration path, where a
-whole section is merged in and the Hajj rituals chapter alone is ~5,600 tokens.
-Anything dropped is reported on the answer, never swallowed.
+And its advertised context is 262k, which is **not** what to request: at 32k an
+18GB machine went to 9.6GB of swap. 16,384 leaves ~10,900 tokens for excerpts
+against a measured worst case of 9,500, at half the KV cache.
 
 ## Run
 
@@ -98,36 +78,6 @@ uv run streamlit run src/ai_fiqh/app.py
 
 Three tabs: **Ask**, **Practice questions** (MCQs), **Flashcards**.
 
-## How it avoids being confidently wrong
-
-Two failure modes matter here, and both are handled structurally rather than by
-asking the model nicely.
-
-**Opposite rulings sit next to each other.** "Things which nullify wuḍūʾ" (p17)
-and "things which do *not*" (p18) are near-identical to an embedding model and
-opposite in law. Contrasting sections share a `group_id`, and retrieval always
-returns the whole group — so the model reads both sides and cannot pick the
-wrong one, because it never picks.
-
-**Retrieval can succeed while the score fails.** The confidence gate compares a
-reranker score against a threshold, and a vaguely-worded question scores low even
-when the correct passage is ranked first. So a score in the grey band just below
-the gate buys one rephrasing: the question — never the corpus — goes to the model,
-which returns a better *search query*, and retrieval runs again. The abstention
-decision is still made in code, on a score, after that returns. The rephrasing is
-shown in the UI, because the book was searched for something other than what was
-typed. Questions scoring below the floor are abstained on without spending a call.
-
-**A plausible answer is indistinguishable from a correct one.** Four independent
-defences, three of them code that keeps working when the model has a bad day:
-resolved citations, a confidence gate that abstains *before* any model call, an
-authority-boundary prompt, and a check that every page and excerpt cited was
-actually in context.
-
-Practice questions use the same idea: wrong answers are drawn from the book's
-own categories, so a distractor is wrong because the book files it elsewhere —
-never because the model judged it wrong.
-
 ## Evaluation
 
 ```bash
@@ -136,17 +86,27 @@ uv run python eval/run_eval.py --sweep    # gate threshold trade-off, no API cal
 uv run python eval/run_eval.py --provider ollama --judge-provider azure
 ```
 
-40 hand-written questions across five categories: covered, polarity traps,
-transliteration variants, out-of-scope, and cross-madhhab bait. Every run is
-stamped with the model *and* the judge, because scores are not comparable across
-either. By default the judge is the model under test, which is self-grading —
-the harness prints a warning when that happens, and `--judge-provider` is how you
-get an independent grader.
+**42 hand-written questions** across five categories: covered, polarity traps,
+transliteration variants, out-of-scope, and cross-madhhab bait. A companion set of
+**77 naturally-phrased questions** (`eval/natural-phrasing-set.json`) probes
+phrasing robustness — the golden set was written by someone holding the book, so
+it shares the book's vocabulary and understates false abstention roughly
+fourfold.
 
-The 40/40 in `eval/results/20260804-103342.json` was measured on `claude-opus-5`
-with native citations. **It does not carry over to another provider** — read
-`docs/PROJECT_TRACKER.md` before trusting any number here: the set is saturated
-and the gate threshold was fitted on it.
+Every run is stamped with the model *and* the judge, because scores are not
+comparable across either. By default the judge is the model under test, which is
+self-grading — the harness warns when that happens, and `--judge-provider` gives
+an independent grader.
+
+Current run on `azure/gpt-5.4` (`eval/results/two-level-gate.json`): **41/42
+behaviour, 0/26 false abstention, 16/16 abstention, 26/26 recall@context.**
+The one failure is a **bad reference answer**, not a model error — `Q01` says
+three farḍ acts of ghusl where the book enumerates eleven.
+
+**Read `docs/PROJECT_TRACKER.md` before trusting any number here.** Scores are
+self-graded, the golden set is saturated, and the older 40/40 in
+`eval/results/20260804-103342.json` was measured on `claude-opus-5` with
+API-native citations and does not carry over.
 
 ## Layout
 
@@ -155,6 +115,8 @@ and the gate threshold was fitted on it.
 | `src/ai_fiqh/index.py` | Hybrid retrieval — BM25 + dense, RRF, rerank, group expansion |
 | `src/ai_fiqh/llm.py` | Provider abstraction — Azure OpenAI, Ollama, Anthropic |
 | `src/ai_fiqh/qa.py` | Q&A pipeline and the four abstention layers |
+| `eval/gate_signals.py` | Which retrieval signal layer 2 should gate on — measured |
+| `eval/make_natural_set.py` | Builds the phrasing-robustness question set |
 | `src/ai_fiqh/revision.py` | MCQs and flashcards |
 | `src/ai_fiqh/prompts.py` | System prompts, versioned |
 | `notebooks/explore.ipynb` | Inspect retrieval stage by stage |
@@ -167,9 +129,13 @@ Single book, single madhhab, `ʿibādāt` only. Zakāh and Hajj have no MCQ
 coverage — neither has the category metadata a distractor needs — so they get
 flashcards instead.
 
-The abstention behaviour this project exists for is **model-dependent**, and the
-only provider it has been measured on is `claude-opus-5`. Layers 2 and 4 are code
-and hold regardless; layers 1 and 3 are only as good as the model reading them.
-Re-run the eval after changing provider or model.
+The abstention behaviour this project exists for is **model-dependent**. It has
+been measured on `claude-opus-5` and `gpt-5.4`; `gemma4:12b` passes the polarity
+case that `gemma2:9b` failed but still fabricated a supporting clause that the
+citation check cannot catch, which is why it is the fallback and not the primary.
+Layer 4 holds regardless — it compares cited pages against supplied pages. Layers
+1 and 3 are only as good as the model reading them, and **layer 2 is a retrieval
+signal, not a judgement**: it abstains below 0.60 and flags rather than abstains
+above it. Re-run the eval after changing provider or model.
 
 **Not a substitute for a qualified scholar.**

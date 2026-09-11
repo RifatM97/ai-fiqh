@@ -247,7 +247,47 @@ Note the constraint: **citations are incompatible with `output_config.format`** 
 >
 > Two smaller defects found alongside it. `rerank-2.5` quantizes scores to 1/512, and `0.74` falls between the representable 0.738281 and 0.740234, so **the effective gate is 0.740234 and the constant does not mean what it says**. And a missing BM25 alias (`iqama` vs the corpus's `iqamah`) can drop the keyword arm to zero on the query's only content word — see §1.4, which anticipated the class but not the specific gap.
 >
-> **Mitigation shipped, not a fix:** a grey-band query rewrite (score in `[0.60, gate)` buys one model call to rephrase the *query*, then retrieval runs again). It fixed two of three known cases. The structural options — multi-query retrieval with RRF fusion, a margin-based rather than absolute signal, or routing the grey band to layer 3 — remain open. See the tracker.
+> **Resolved 2026-09-11 — the gate became two boundaries, and the scale-free idea was wrong.**
+>
+> All four options recorded in the tracker were worked. Two were implemented, one was refuted by measurement, and one was approximated:
+>
+> **The scale-free signal idea is wrong, and wrong for a structural reason.** Seven candidate signals were measured on 103 answerable questions against 16 should-abstain ones (`eval/gate_signals.py`). Scored by the false-abstention cost at the strictest threshold that still abstains on everything it must:
+>
+> | signal | AUC | false abstention |
+> |---|---|---|
+> | **top (unchanged)** | **0.942** | **21.4%** |
+> | margin to #2 | 0.830 | 68.0% |
+> | margin to tail | 0.907 | 63.1% |
+> | ratio to tail | 0.850 | 65.0% |
+> | z-score of top | 0.618 | 78.6% |
+>
+> Every scale-free alternative is worse, because **§1.3 and margin-based confidence are incompatible**. Group expansion deliberately puts both halves of a polarity pair at the top, so on the wuḍūʾ-bleeding question the margin is 0.0156 *when retrieval is perfect*, against 0.1133 for a cross-madhhab question that must be declined. A margin ranks correct polarity retrieval below bait. The absolute score stays.
+>
+> **What changed instead is that one threshold became two.** `MIN_RERANK_SCORE` is no longer the abstention boundary; it is a confidence boundary, and `ABSTAIN_BELOW = 0.60` is the abstention boundary:
+>
+> ```
+> score < 0.60    abstain in code, no model call
+> score < 0.74    answer, flagged low-confidence, layer 3 decides
+> otherwise       answer
+> ```
+>
+> The justification is measurable and was checked before the change, not after. Asking whether the *right chunk* is retrieved in each band:
+>
+> | band | n | #1 chunk correct |
+> |---|---|---|
+> | below 0.60 | 2 | **0%** |
+> | 0.60 – 0.74 | 24 | **79%** |
+> | above 0.74 | 77 | **79%** |
+>
+> **Retrieval in the grey band is exactly as good as above the gate** — the score differs, the retrieval does not. So answering there is not a gamble, and abstaining there was discarding correct context. Below 0.60 the right chunk is never first, so abstaining is correct: lowering that floor would send *wrong* passages to the model and invite a confident answer about the wrong ruling.
+>
+> The 16 should-abstain questions split 9 below the floor and 7 in the band, and **the 7 are all cross-madhhab bait** — which is exactly what layer 3's authority boundary is written for. Tested directly by forcing them past the gate and grading with the harness's own judge: **7/7 declined, 0 leaked.** No genuinely out-of-scope question (inheritance, criminal law, waqf) reaches a model at all.
+>
+> **Multi-query retrieval replaced the single rewrite.** `Retriever.search_many` fuses candidates across several phrasings with the existing RRF and takes each chunk's *best* score over those phrasings — the maximum matters, because reranking the fused set against the original wording alone would reintroduce the very sensitivity being removed. On 77 naturally-phrased questions it cut the share below the confidence boundary from **31.2% to 10.4%**, and it lifts the answerable class about twice as much as the should-abstain class, so it improves separation rather than inflating everything.
+>
+> It is spent only in the grey band, not on every question, because it costs one embedding and one rerank per phrasing.
+>
+> Net effect on the golden set: **41/42 behaviour, false abstention 0/26, abstention 16/16, recall@context 26/26.** The one remaining failure is a bad reference answer, not a model error — see the §4 correction.
 >
 > **The trade-off was also stated too comfortably.** False abstention reads as the safe failure because nothing untrue is asserted. But telling a user the book does not address a ruling that is on p14 teaches them something false *about the book*, and spends the credibility that makes the correct abstentions worth having. It belongs alongside abstention rate as a first-class metric, not as the acceptable side of a dial.
 
@@ -559,6 +599,14 @@ Those last two are the tuning dial. The confidence gate trades them against each
 > **Reproducibility, measured 2026-09-04.** Two *identical* eval runs on `azure/gpt-5.4` scored 39/42 and 40/42, with two questions flipping verdict on byte-identical retrieval. `temperature=0.0` is accepted and does not make the model deterministic. So **the harness carries ±1–2 questions of noise**, a single run cannot resolve a small difference, and the retrieval-determined metrics (recall@context, false abstention) are the stable ones to judge changes on — not `behaviour`.
 >
 > **The judge is not independent.** With Anthropic credit exhausted, the grader is the same deployment as the model under test. `run_eval.py` prints a warning on every such run, and `--judge-provider` exists for when a second provider is available. Self-graded numbers are not comparable with independently graded ones.
+
+> **Correction (2026-09-11) — the set now has a phrasing-robustness companion, and one of its labels is wrong.**
+>
+> `eval/natural-phrasing-set.json` holds 77 questions generated by `eval/make_natural_set.py`. **It is explicitly not a user study** — a model that has read the corpus cannot produce questions from someone who has not. What it does instead is enforce the property that matters, in code: a variant is kept only if it shares *less* of the source passage's vocabulary than the golden question does. Mean overlap reduction 32.1%. Read scores on it as a robustness probe.
+>
+> It immediately paid for itself. At the production threshold, false abstention was **7.7% on golden questions and 31.2% on these** — the fourfold gap the anecdotes implied, now measured on 77 cases, and the evidence that resolved §1.7 layer 2.
+>
+> **And a labelling error it surfaced.** `Q01` asks for the farḍ acts of ghusl; its reference answer lists three. The book says *"Eleven things are deemed farḍ in ghusl"* and enumerates eleven. The reference is wrong, the model's eleven-item answer was right, and the judge marked it `contradicts`. This went unnoticed because Azure's content filter made Q01 fail as a refusal in every prior run — **an infrastructure failure was masking a data error**, which is a good argument for fixing the loud failure before trusting anything downstream of it.
 
 For revision mode, evaluate the **validators** (§2.3) rather than the output: what fraction of generated MCQs pass all four checks on first generation? A low rate means the distractor pool construction is wrong, not that Claude is bad at the task.
 
