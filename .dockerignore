@@ -1,0 +1,19 @@
+# Never ship the source PDF or dev/eval artifacts into a container image —
+# see docs/deployment.md §1 (data/ is ingest-time only, index/ is what ships).
+.venv/
+data/
+.git/
+.github/
+.claude/
+notebooks/
+eval/
+docs/
+*.ipynb
+__pycache__/
+*.pyc
+.DS_Store
+index/embeddings.partial.npz
+
+# Never bake secrets into an image — Key Vault supplies these at runtime,
+# see docs/deployment.md §4/§4a.
+.env
