@@ -6,7 +6,7 @@ param namePrefix = 'aifiqh'
 // Explicit tags, not 'latest': Container Apps only rolls a new revision when
 // the image reference changes, so re-pushing under the same tag deploys
 // nothing. Bump these (v2, v3, ...) with each new image.
-param webImageTag = 'v1'
+param webImageTag = 'v2'
 param ollamaImageTag = 'v1'
 
 // Not secrets, but specific to your Azure OpenAI resource (from .env).

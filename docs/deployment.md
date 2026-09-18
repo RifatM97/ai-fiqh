@@ -367,8 +367,37 @@ section as needing: it's not that scale-to-zero *might* need revisiting
 toward `min replicas: 1`, it's that the compute tier itself had to change
 first, before the scale-to-zero question could even be tested honestly.
 
-**Still not measured: end-to-end cold start on the actual Azure Dedicated
-profile.** The 60.3s figure is model load only, on different hardware, with
+### ⚑ 2026-09-18, deployed: CPU inference is not viable, moved to serverless GPU
+
+The E4 profile ran the model — 16 GiB was enough, it loaded, `llama-server
+started in 13.06 seconds`. Then every question returned
+`504 stream timeout`. The Ollama logs said why:
+
+```
+prompt processing, n_tokens = 1024, progress = 0.22, t = 153.23 s / 6.68 tokens per second
+2026/09/18 - 08:10:14 | 500 | 4m0s | POST "/api/chat"
+```
+
+**6.7 tok/s of prompt processing against a 4,685-token RAG prompt is ~12
+minutes before the first generated token**, and the Container Apps ingress
+cancels at its fixed 4-minute request timeout. Raising the timeout would not
+have helped: the latency itself is the problem. The local M3 Pro's 30–40s
+came from GPU acceleration and unified memory; an x86 CPU-only node has
+neither, and the ~20x gap is the whole story.
+
+**Resolved: `ai-fiqh-ollama` runs on `Consumption-GPU-NC8as-T4`** (profile
+`gpu-ollama`, added to the environment 2026-09-18, now declared in
+`infra/modules/container-apps.bicep` so IaC and reality agree). A T4's 16 GB
+of VRAM holds this ~8 GB quantized model, and *Consumption*-GPU keeps
+scale-to-zero rather than reintroducing an always-on node. The E4 profile is
+left declared but unused for now.
+
+Worth recording as the general lesson, since it cost a full deploy cycle to
+learn: **a quantized 12B model fits in CPU memory long before it is usable at
+CPU speed.** Memory sizing was the obvious constraint and it was the wrong one
+to plan around.
+
+**Still not measured: end-to-end cold start on the GPU profile.** The 60.3s figure is model load only, on different hardware, with
 the container already running — it doesn't include pulling the (now larger,
 16 GiB-headroom) image from ACR, scheduling onto the dedicated profile, or
 that profile's own node-level cold start when scaling up from
@@ -398,9 +427,69 @@ number was gathered to inform — not yet made.
 - **CI/CD pipeline shape** — not sketched yet: build-on-push vs. build-on-
   tag, whether staging/prod are separate Container Apps revisions or
   separate environments entirely.
+- **Application Insights** — Log Analytics carries the app's stdout, and as
+  of 2026-09-18 that stdout is finally worth reading (see *Logging* below),
+  but there is still no APM/tracing layer.
+
+### ⚑ 2026-09-18: the two blocked chunks now pass Azure's filter
+
+Both chunks that justified the fallback in the first place were retrieved in
+the deployed app and answered normally by `azure/gpt-5.4` — no refusal, no
+fallback:
+
+| chunk | pages | result |
+|---|---|---|
+| `138-…rituals-of-hajj-p4` | 142–143 | answered 3.5s, `stop=stop` |
+| `083-jumuah-p1` | 84–86 | answered 3.4s, `stop=stop` |
+
+`083-jumuah-p1` had never been exercised end to end before (flagged as an
+open item on 2026-09-10); it now has been. The `violence` false positives
+from that scan are gone — presumably the custom filter policy was extended
+to that category after 2026-09-10.
+
+**Decision: keep the fallback as insurance, unscanned.** A full 177-chunk
+re-scan was considered and declined; the evidence is two questions, not a
+corpus sweep, so "the filter no longer refuses anything" is *not* an
+established claim — only "it does not refuse these two." The GPU app costs
+nothing while scaled to zero (it has never woken), so the insurance is
+close to free.
+
+**The cost of that choice, recorded so it isn't forgotten: the fallback path
+is now unproven in production.** It has never fired on the GPU profile,
+which means both its correctness there *and* its cold-start latency are
+untested. Insurance that has never been claimed on is not yet known to pay
+out. Worth deliberately exercising once — set `AI_FIQH_LLM_PROVIDER=ollama`
+on a throwaway revision, ask one question, and read the timings — which
+would also close §4c's outstanding cold-start measurement.
+
+### Logging — added 2026-09-18
+
+The deployed app was effectively unobservable: Streamlit renders results to
+the browser, and the code used `print()` only in ingest/eval paths, so the
+Container Apps log stream showed the web server starting and nothing else —
+no retrieval scores, no gate decisions, no model errors. The 504 above was
+diagnosed from Ollama's own logs, not the app's.
+
+`logging` now covers the request path (`qa.py`, `llm.py`, configured in
+`app.py`): retrieval score and top chunk, layer-2 abstentions with the score
+and floor, multi-query kept/discarded with both scores, the provider and
+chunk/page count of each model call with its elapsed time, layer-4 flags,
+content-filter fallbacks, and model-call exceptions with timing. `httpx` and
+friends are pinned to WARNING so they don't bury it, and the web image sets
+`PYTHONUNBUFFERED=1` so lines actually reach the stream.
+
+**Question text logs at DEBUG, never INFO** (`AI_FIQH_LOG_LEVEL=DEBUG` to
+enable). These are personal religious questions — ghusl, menstruation, and
+similar — and the log stream is a shared corporate workspace. The INFO
+stream carries decisions and identifiers, not what anyone asked.
 - **The two `violence`-filtered chunks still have no golden-set coverage**
-  (tracker, 2026-09-10) — still worth closing before the fallback path gets
-  exercised by real public traffic for the first time.
+  (tracker, 2026-09-10) — and as of 2026-09-18 they no longer trip the
+  filter at all, so the eval would now be blind to the regression rather
+  than to the block. Still worth a golden question each.
+- **The fallback has never actually fired in production** — kept as
+  insurance 2026-09-18 without a corpus re-scan, so neither its correctness
+  on the GPU profile nor its cold-start latency is known. One deliberate
+  test closes this and §4c's cold-start item together.
 - **Domain + TLS** — Container Apps gives a default `*.azurecontainerapps.io`
   hostname with managed TLS out of the box; a custom domain is optional
   polish, not a blocker.

@@ -21,6 +21,9 @@ COPY src/ ./src/
 COPY index/ ./index/
 
 ENV PATH="/app/.venv/bin:${PATH}"
+# Unbuffered, or log lines sit in the buffer instead of reaching the platform
+# log stream.
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 

@@ -16,6 +16,8 @@ caught a page the model named that was never in context.
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -28,6 +30,21 @@ if __package__ in (None, ""):  # `streamlit run` executes this as a script
 from ai_fiqh import llm, qa, revision
 from ai_fiqh.index import ABSTAIN_BELOW, MIN_RERANK_SCORE, Retriever
 from ai_fiqh.normalize import display_title
+
+# Streamlit renders results to the browser, so without this the server's stdout
+# says nothing about retrieval, gate decisions or model calls — which is exactly
+# what a deployed log stream can show. `force` because Streamlit configures
+# logging first. AI_FIQH_LOG_LEVEL=DEBUG also logs question text (see qa.py).
+logging.basicConfig(
+    level=os.environ.get("AI_FIQH_LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+# Two HTTP lines per model call (the Azure dialect probe makes it three) would
+# bury the pipeline's own lines in the deployed stream.
+for _noisy in ("httpx", "httpx2", "httpcore", "urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 st.set_page_config(page_title="AI-Fiqh", page_icon="📖", layout="centered")
 

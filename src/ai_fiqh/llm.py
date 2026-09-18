@@ -24,6 +24,7 @@ told otherwise. `context_tokens` is what `qa.py` budgets against.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from dataclasses import dataclass, field
@@ -31,6 +32,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -737,6 +740,11 @@ class FallbackClient:
             out.answered_by = describe(self.primary)
             return out
 
+        log.warning(
+            "%s returned a content filter refusal; falling back to %s",
+            describe(self.primary),
+            describe(self.fallback),
+        )
         out = self.fallback.complete(
             system, user, max_tokens=max_tokens, temperature=temperature
         )

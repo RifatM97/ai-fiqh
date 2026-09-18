@@ -28,12 +28,24 @@ param ollamaImageTag string
 param azureOpenAiEndpoint string
 param azureOpenAiDeployment string
 
-// Confirmed locally on 2026-09-17 that the Consumption plan's 8 GiB
-// per-container ceiling OOM-kills gemma4:12b (reproduced twice, including
-// with the tracker's recommended 16,384-token context). So ai-fiqh-ollama
-// runs on a Dedicated profile. This names an actual SKU — confirm it is
-// offered in the target region before deploying:
-//   az containerapp env workload-profile list-supported --location <region> -o table
+// Two findings, in order, drove where ai-fiqh-ollama runs:
+//
+// 1. 2026-09-17, locally: the Consumption plan's 8 GiB per-container ceiling
+//    OOM-kills gemma4:12b. So a Dedicated CPU profile (E4, 4 cores/32 GiB).
+// 2. 2026-09-18, in Azure: E4 runs it, but CPU-only inference processes the
+//    prompt at 6.7 tok/s — ~12 minutes for a 4,685-token RAG prompt, and the
+//    Container Apps ingress cuts the request off at 4m0s (the 504 seen in
+//    testing). Unusable regardless of the timeout.
+//
+// So it runs on a serverless GPU profile. Consumption-GPU keeps scale-to-zero
+// (no minimumCount/maximumCount — those are Dedicated-only), and a T4's 16 GB
+// of VRAM comfortably holds this ~8 GB quantized model.
+//
+// The E4 profile is still declared below only because removing a profile
+// while an app references it is a fight not worth having in one deployment;
+// it costs nothing at minimumCount 0 and can be dropped in a later pass.
+param gpuProfileName string = 'gpu-ollama'
+param gpuProfileWorkloadType string = 'Consumption-GPU-NC8as-T4'
 param dedicatedProfileWorkloadType string = 'E4'
 
 var ollamaProfileName = 'ollama-profile'
@@ -111,12 +123,12 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
       {
         name: ollamaProfileName
         workloadProfileType: dedicatedProfileWorkloadType
-        // minimumCount: 0 lets the dedicated node deallocate once
-        // ai-fiqh-ollama has scaled to zero — the closest a Dedicated
-        // profile gets to Consumption's idle economics, at the price of a
-        // node-level cold start on top of the 56.8s model load (§4c).
         minimumCount: 0
         maximumCount: 1
+      }
+      {
+        name: gpuProfileName
+        workloadProfileType: gpuProfileWorkloadType
       }
     ]
   }
@@ -138,7 +150,7 @@ resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
   ]
   properties: {
     managedEnvironmentId: environment.id
-    workloadProfileName: ollamaProfileName
+    workloadProfileName: gpuProfileName
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
@@ -158,12 +170,11 @@ resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'ollama'
           image: '${acrLoginServer}/ai-fiqh-ollama:${ollamaImageTag}'
-          // 16 GiB is ~2x the model's on-disk size — the local test only
-          // succeeded once 16 GiB was available. 3 vCPU rather than 4 leaves
-          // the dedicated node some capacity for its own system overhead.
+          // Sized to the whole NC8as-T4 node (8 cores / 56 GiB), which is how
+          // a serverless GPU profile is allocated — one app per GPU node.
           resources: {
-            cpu: json('3')
-            memory: '16Gi'
+            cpu: json('8')
+            memory: '56Gi'
           }
         }
       ]

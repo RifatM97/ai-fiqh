@@ -25,7 +25,9 @@ code, which is where layers 2 and 4 already were.
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +35,11 @@ from . import llm, prompts
 from .index import ABSTAIN_BELOW, MIN_RERANK_SCORE, Retriever, SearchTrace
 from .normalize import fold
 from .schemas import QueryVariants
+
+# Question text is logged at DEBUG, never INFO: these are personal religious
+# questions and the deployed log stream is a shared workspace. INFO carries the
+# decisions (scores, bands, providers, chunk ids) needed to debug the pipeline.
+log = logging.getLogger(__name__)
 
 # Answer length. These are short answers; the ceiling exists to bound cost and to
 # leave room in a small context window, not because answers approach it.
@@ -443,7 +450,16 @@ def answer(
     pre-2026-09-11 behaviour of abstaining anywhere below `gate`.
     """
     r = retriever if retriever is not None else Retriever(verbose=False)
+    log.debug("question: %s", question)
+    started = time.monotonic()
     trace = r.search(question)
+    log.info(
+        "retrieved top_score=%.4f top_chunk=%s n=%d in %.2fs",
+        trace.top_score,
+        trace.reranked[0].id if trace.reranked else "-",
+        len(trace.results),
+        time.monotonic() - started,
+    )
 
     # --- Layer 2, part one: abstain in code where the signal is trustworthy ---
     # Below this the score genuinely does discriminate: 9 of 16 should-abstain
@@ -452,6 +468,11 @@ def answer(
     # book does not answer this.
     floor = min(ABSTAIN_BELOW, gate) if grey_band else gate
     if trace.top_score < floor:
+        log.info(
+            "abstained layer=2 reason=low-confidence top_score=%.4f floor=%.4f",
+            trace.top_score,
+            floor,
+        )
         return Answer(
             question=question,
             text=prompts.ABSTENTION_LOW_CONFIDENCE,
@@ -481,8 +502,21 @@ def answer(
             # silently -- the user asked the first question, and there is no
             # reason to answer a worse version of it.
             if retried.top_score > trace.top_score:
+                log.info(
+                    "multi-query kept: %.4f -> %.4f (%d variants)",
+                    trace.top_score,
+                    retried.top_score,
+                    len(variants),
+                )
                 original_score, query_variants, trace = (
                     trace.top_score, variants, retried
+                )
+            else:
+                log.info(
+                    "multi-query discarded: %.4f -> %.4f (%d variants)",
+                    trace.top_score,
+                    retried.top_score,
+                    len(variants),
                 )
 
     # --- Layer 2, part two: the grey band goes to the model, not to silence ---
@@ -530,13 +564,46 @@ def answer(
     )
     chunks, dropped = fit_to_context(chunks, client, system, question)
 
-    completion, citations, unresolved = _ask(
-        client, chunks, question, low_confidence=low_confidence
+    log.info(
+        "calling %s chunks=%d pages=%s enumeration=%s low_confidence=%s dropped=%d",
+        llm.describe(client),
+        len(chunks),
+        sorted(_pages_covered(chunks)),
+        enumeration,
+        low_confidence,
+        dropped,
+    )
+    call_started = time.monotonic()
+    try:
+        completion, citations, unresolved = _ask(
+            client, chunks, question, low_confidence=low_confidence
+        )
+    except Exception:
+        # The failure the deployed app hit first was an Ollama gateway timeout
+        # with nothing in the log stream to say so. Record it before it
+        # propagates to the UI's error banner.
+        log.exception(
+            "model call failed after %.1fs (%s)",
+            time.monotonic() - call_started,
+            llm.describe(client),
+        )
+        raise
+    log.info(
+        "answered_by=%s in %.1fs stop=%s fallback=%s",
+        completion.answered_by or llm.describe(client),
+        time.monotonic() - call_started,
+        completion.stop_reason,
+        completion.fallback_used,
     )
 
     # A provider may decline outright — an Anthropic refusal stop reason, or an
     # Azure content filter. Check before reading the (empty) content.
     if completion.refused:
+        log.warning(
+            "abstained layer=3 reason=refusal stop=%s provider=%s",
+            completion.stop_reason,
+            client.provider,
+        )
         return Answer(
             question=question,
             text=prompts.ABSTENTION_OUT_OF_SCOPE,
@@ -555,6 +622,14 @@ def answer(
             model=client.model,
         )
 
+    unverified_pages = verify_citations(completion.text, chunks)  # Layer 4
+    if unverified_pages or unresolved:
+        log.warning(
+            "layer 4 flagged answer: unverified_pages=%s unresolved_markers=%s",
+            unverified_pages,
+            unresolved,
+        )
+
     return Answer(
         question=question,
         text=completion.text,
@@ -563,7 +638,7 @@ def answer(
         chunks=chunks,
         trace=trace,
         enumeration=enumeration,
-        unverified_pages=verify_citations(completion.text, chunks),  # Layer 4
+        unverified_pages=unverified_pages,
         unresolved_markers=unresolved,
         context_dropped=dropped,
         answered_by=completion.answered_by or llm.describe(client),
