@@ -2,34 +2,36 @@
 // No auth, no VNet/APIM, no CI/CD yet — see docs/deployment.md for what's
 // deliberately deferred and why.
 //
-// Deploy (resource group created separately, not by this template):
-//   az deployment group create \
-//     --resource-group <rg> \
-//     --template-file infra/main.bicep \
-//     --parameters infra/main.bicepparam
+// Deployed in two stages, because the container apps cannot be created
+// until their images are in ACR and their secrets are in Key Vault — and
+// ACR and Key Vault are created by this same template:
 //
-// Then populate the Key Vault (never via Bicep — see modules/keyvault.bicep):
-//   az keyvault secret set --vault-name <kv-name> --name voyage-api-key --value <...>
-//   az keyvault secret set --vault-name <kv-name> --name anthropic-api-key --value <...>
-//   az keyvault secret set --vault-name <kv-name> --name azure-openai-api-key --value <...>
+//   Stage 1  deployApps=false  Log Analytics, ACR, Key Vault (+ your secrets role)
+//            → push images to ACR, set the three Key Vault secrets
+//   Stage 2  deployApps=true   Container Apps environment, identities, both apps
 //
-// And only after both images exist in ACR (docker build + az acr login +
-// docker push, or `az acr build`) will the container apps' revisions
-// actually start — provisioning them first is expected to leave the
-// revisions in a failed state until the images are pushed.
+// Full command sequence: docs/deployment.md §7 (runbook).
 
 targetScope = 'resourceGroup'
 
 param location string = 'uksouth'
 param namePrefix string = 'aifiqh'
 
-param webImageTag string = 'latest'
-param ollamaImageTag string = 'latest'
+@description('false for stage 1 (registry + vault only), true for stage 2 (the apps). See header.')
+param deployApps bool = false
+
+@description('Object ID of whoever sets the Key Vault secrets — granted Key Vault Secrets Officer. `az ad signed-in-user show --query id -o tsv`.')
+param deployerPrincipalId string = ''
+
+param webImageTag string = 'v1'
+param ollamaImageTag string = 'v1'
 
 @description('Existing Azure OpenAI resource this deployment calls — provisioning it is out of scope here (docs/deployment.md §3).')
 param azureOpenAiEndpoint string
 
 param azureOpenAiDeployment string
+
+param dedicatedProfileWorkloadType string = 'E4'
 
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
 
@@ -54,10 +56,11 @@ module keyVault 'modules/keyvault.bicep' = {
   params: {
     location: location
     name: 'kv-${namePrefix}-${uniqueSuffix}'
+    deployerPrincipalId: deployerPrincipalId
   }
 }
 
-module containerApps 'modules/container-apps.bicep' = {
+module containerApps 'modules/container-apps.bicep' = if (deployApps) {
   name: 'container-apps'
   params: {
     location: location
@@ -72,9 +75,11 @@ module containerApps 'modules/container-apps.bicep' = {
     ollamaImageTag: ollamaImageTag
     azureOpenAiEndpoint: azureOpenAiEndpoint
     azureOpenAiDeployment: azureOpenAiDeployment
+    dedicatedProfileWorkloadType: dedicatedProfileWorkloadType
   }
 }
 
+output acrName string = acr.outputs.name
 output acrLoginServer string = acr.outputs.loginServer
 output keyVaultName string = keyVault.outputs.name
-output webFqdn string = containerApps.outputs.webFqdn
+output webFqdn string = deployApps ? containerApps!.outputs.webFqdn : ''

@@ -4,13 +4,12 @@
 // since `ingress.external` is a per-app setting independent of whether the
 // environment itself has a custom VNet.
 //
-// Known first-deploy quirk, not solved here: a container app's managed
-// identity needs its role assignment (AcrPull / Key Vault Secrets User) to
-// finish propagating before it can actually pull its image or resolve a
-// Key-Vault-backed secret. ARM will accept this template and create
-// everything, but the very first revision can fail to start on a fresh
-// resource group for that reason — a `az containerapp revision restart` a
-// minute or two later resolves it. Not a bug in this template.
+// Identities are user-assigned, not system-assigned, on purpose: a
+// system-assigned identity only exists once its container app does, so it
+// can't hold AcrPull / Key Vault Secrets User at the moment that app's first
+// revision tries to pull its image and resolve its secrets. A user-assigned
+// identity is created first, granted its roles, and only then attached —
+// the `dependsOn` on each app enforces that order.
 
 param location string
 param environmentName string
@@ -23,12 +22,21 @@ param acrLoginServer string
 param keyVaultName string
 param keyVaultUri string
 
-param webImageTag string = 'latest'
-param ollamaImageTag string = 'latest'
+param webImageTag string
+param ollamaImageTag string
 
 param azureOpenAiEndpoint string
 param azureOpenAiDeployment string
 
+// Confirmed locally on 2026-09-17 that the Consumption plan's 8 GiB
+// per-container ceiling OOM-kills gemma4:12b (reproduced twice, including
+// with the tracker's recommended 16,384-token context). So ai-fiqh-ollama
+// runs on a Dedicated profile. This names an actual SKU — confirm it is
+// offered in the target region before deploying:
+//   az containerapp env workload-profile list-supported --location <region> -o table
+param dedicatedProfileWorkloadType string = 'E4'
+
+var ollamaProfileName = 'ollama-profile'
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 
@@ -40,22 +48,49 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-// Workload profiles: 'Consumption' stays the default for ai-fiqh-web.
-// ai-fiqh-ollama moves to a Dedicated profile — confirmed locally on
-// 2026-09-17 that the Consumption plan's 8 GiB per-container ceiling is not
-// a theoretical risk but an actual OOM kill (`llama-server process has
-// terminated: signal: killed`), reproduced twice, including with the
-// tracker's own recommended 16,384-token context ceiling applied. 8 GiB
-// simply isn't enough headroom to load an ~8 GB quantized model plus KV
-// cache and runtime overhead.
-//
-// `dedicatedProfileWorkloadType` names an actual SKU (e.g. 'E4', 'E8') —
-// confirm what's currently offered in this region before deploying:
-//   az containerapp env workload-profile list-supported --location <region>
-// The value below is a placeholder for "a memory-optimized profile with
-// real headroom above 8 GiB," not a verified-available SKU name.
-param dedicatedProfileWorkloadType string = 'E4'
-var ollamaProfileName = 'ollama-profile'
+// --- Identities and their roles, created before either app -----------------
+
+resource webIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: 'id-ai-fiqh-web'
+  location: location
+}
+
+resource ollamaIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: 'id-ai-fiqh-ollama'
+  location: location
+}
+
+resource webAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, webIdentity.id, acrPullRoleId)
+  scope: acr
+  properties: {
+    principalId: webIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
+  }
+}
+
+resource webKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, webIdentity.id, keyVaultSecretsUserRoleId)
+  scope: keyVault
+  properties: {
+    principalId: webIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
+  }
+}
+
+resource ollamaAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, ollamaIdentity.id, acrPullRoleId)
+  scope: acr
+  properties: {
+    principalId: ollamaIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
+  }
+}
+
+// --- Environment -------------------------------------------------------------
 
 resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: environmentName
@@ -76,12 +111,10 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
       {
         name: ollamaProfileName
         workloadProfileType: dedicatedProfileWorkloadType
-        // minimumCount: 0 lets the dedicated node pool itself deallocate
-        // when ai-fiqh-ollama has scaled its own replica to 0 — the closest
-        // approximation of "scale to zero" a Dedicated profile allows.
-        // Expect a real node-level cold start in addition to the
-        // container-level one; this is the thing still needing to be
-        // measured (docs/deployment.md §4c).
+        // minimumCount: 0 lets the dedicated node deallocate once
+        // ai-fiqh-ollama has scaled to zero — the closest a Dedicated
+        // profile gets to Consumption's idle economics, at the price of a
+        // node-level cold start on top of the 56.8s model load (§4c).
         minimumCount: 0
         maximumCount: 1
       }
@@ -90,20 +123,19 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // --- ai-fiqh-ollama: the content-filter fallback, scale-to-zero ------------
-//
-// Moved to the dedicated `ollama-profile` workload profile (see the
-// environment resource above) after confirming locally on 2026-09-17 that
-// the Consumption plan's 8 GiB ceiling is not enough headroom for
-// gemma4:12b — reproducibly OOM-killed at that size, including with the
-// tracker's own recommended 16,384-token context ceiling applied. 16 GiB
-// requested here is roughly double the model's on-disk footprint, chosen
-// as a real safety margin after that finding, not a round-number guess.
+
 resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ai-fiqh-ollama'
   location: location
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${ollamaIdentity.id}': {}
+    }
   }
+  dependsOn: [
+    ollamaAcrPull
+  ]
   properties: {
     managedEnvironmentId: environment.id
     workloadProfileName: ollamaProfileName
@@ -117,7 +149,7 @@ resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: acrLoginServer
-          identity: 'system'
+          identity: ollamaIdentity.id
         }
       ]
     }
@@ -126,8 +158,11 @@ resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'ollama'
           image: '${acrLoginServer}/ai-fiqh-ollama:${ollamaImageTag}'
+          // 16 GiB is ~2x the model's on-disk size — the local test only
+          // succeeded once 16 GiB was available. 3 vCPU rather than 4 leaves
+          // the dedicated node some capacity for its own system overhead.
           resources: {
-            cpu: json('4')
+            cpu: json('3')
             memory: '16Gi'
           }
         }
@@ -140,24 +175,21 @@ resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-resource ollamaAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, ollamaApp.id, acrPullRoleId)
-  scope: acr
-  properties: {
-    principalId: ollamaApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
-  }
-}
-
 // --- ai-fiqh-web: the Streamlit app, always warm ---------------------------
 
 resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ai-fiqh-web'
   location: location
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${webIdentity.id}': {}
+    }
   }
+  dependsOn: [
+    webAcrPull
+    webKeyVaultSecretsUser
+  ]
   properties: {
     managedEnvironmentId: environment.id
     workloadProfileName: 'Consumption'
@@ -174,24 +206,24 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: acrLoginServer
-          identity: 'system'
+          identity: webIdentity.id
         }
       ]
       secrets: [
         {
           name: 'voyage-api-key'
           keyVaultUrl: '${keyVaultUri}secrets/voyage-api-key'
-          identity: 'system'
+          identity: webIdentity.id
         }
         {
           name: 'anthropic-api-key'
           keyVaultUrl: '${keyVaultUri}secrets/anthropic-api-key'
-          identity: 'system'
+          identity: webIdentity.id
         }
         {
           name: 'azure-openai-api-key'
           keyVaultUrl: '${keyVaultUri}secrets/azure-openai-api-key'
-          identity: 'system'
+          identity: webIdentity.id
         }
       ]
     }
@@ -228,28 +260,5 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-resource webAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(acr.id, webApp.id, acrPullRoleId)
-  scope: acr
-  properties: {
-    principalId: webApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
-  }
-}
-
-resource webKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, webApp.id, keyVaultSecretsUserRoleId)
-  scope: keyVault
-  properties: {
-    principalId: webApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
-  }
-}
-
-output environmentId string = environment.id
 output environmentDefaultDomain string = environment.properties.defaultDomain
 output webFqdn string = webApp.properties.configuration.ingress.fqdn
-output webPrincipalId string = webApp.identity.principalId
-output ollamaPrincipalId string = ollamaApp.identity.principalId

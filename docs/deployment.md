@@ -1,8 +1,9 @@
 # AI-Fiqh — Deployment
 
-**Status:** exploration, architecture direction chosen 2026-09-16, nothing
-built yet. This document exists to work through options before committing to
-implementation. See `PROJECT_TRACKER.md` for build status — the app itself is
+**Status:** Phase 1 infrastructure (`docker/`, `infra/`) written and
+validated locally on 2026-09-17 — Bicep compiles clean, both images build —
+but **not yet deployed**. The deploy sequence is §7. Auth, VNet + APIM and
+CI/CD are later phases. See `PROJECT_TRACKER.md` for build status — the app itself is
 feature-complete; this is about putting it in front of users.
 
 **Reframed 2026-09-16.** This is now explicitly a learning vehicle for
@@ -430,5 +431,179 @@ number was gathered to inform — not yet made.
   accounts** (§4a) — decided, not yet built; easy to get wrong by leaving
   the single-tenant default in place.
 - CI/CD pipeline shape — not sketched.
-- Which subscription/resource group this lands in (§3) — worth being
-  deliberate about, not urgent.
+
+---
+
+## 7. Runbook — Phase 1 deploy
+
+Phase 1 = the scope of `infra/`: Log Analytics, ACR, Key Vault, the Container
+Apps environment and both apps. No auth, VNet or APIM yet. Subscription
+`vf.group.architecture.chatgptpoc.openai-cha.dev` (§3), resource group
+`rg-ai-fiqh-learn`. Run from the repo root.
+
+**Three constraints shape the order of these steps:**
+
+- **Images must be `linux/amd64`.** Container Apps does not run `arm64`, which
+  is what `docker build` produces on Apple Silicon. The local
+  `ai-fiqh-web:test` / `ai-fiqh-ollama:test` images are therefore not
+  deployable — build with `az acr build`, which builds for amd64 inside
+  Azure and also avoids uploading ~12 GB over a home connection.
+- **The apps can't exist before their images and secrets do**, and ACR and
+  Key Vault come from the same template — hence two stages, switched by the
+  `deployApps` parameter.
+- **Tags are explicit (`v1`, `v2`, …), never `latest`.** Container Apps only
+  rolls a new revision when the image reference changes.
+
+### 0. Session
+
+```bash
+az login --tenant 68283f3b-8487-4c86-adb3-a5228f18b893
+az account set --subscription "vf.group.architecture.chatgptpoc.openai-cha.dev"
+az extension add --name containerapp --upgrade
+
+RG=rg-ai-fiqh-learn
+LOCATION=swedencentral
+ME=$(az ad signed-in-user show --query id -o tsv)
+```
+
+### 1. Pre-flight — catch the likely failures before spending anything
+
+```bash
+# The template creates role assignments, which needs Owner or User Access
+# Administrator. Contributor alone fails the deployment partway through.
+az role assignment list --assignee "$ME" --all --query "[].roleDefinitionName" -o tsv | sort -u
+
+# Is the dedicated profile SKU offered here? If E4 isn't listed, pass a
+# listed memory-optimised SKU as dedicatedProfileWorkloadType=<sku> in stage 2.
+az containerapp env workload-profile list-supported --location $LOCATION -o table
+
+# One-time per subscription.
+for ns in Microsoft.App Microsoft.OperationalInsights Microsoft.ContainerRegistry \
+          Microsoft.KeyVault Microsoft.ManagedIdentity; do
+  az provider register --namespace $ns
+done
+```
+
+### 2. Stage 1 — registry, vault, logs
+
+```bash
+az group create --name $RG --location $LOCATION
+
+az deployment group create --name ai-fiqh-stage1 --resource-group $RG \
+  --parameters infra/main.bicepparam \
+  --parameters deployApps=false deployerPrincipalId="$ME"
+
+ACR=$(az deployment group show -g $RG -n ai-fiqh-stage1 --query properties.outputs.acrName.value -o tsv)
+KV=$(az deployment group show -g $RG -n ai-fiqh-stage1 --query properties.outputs.keyVaultName.value -o tsv)
+```
+
+### 3. Build both images in Azure
+
+Steps 3 onward need `$ACR` and `$KV`. In a fresh terminal, set them again
+first; an empty value fails with `expected one argument`:
+
+```bash
+RG=rg-ai-fiqh-learn
+ACR=$(az deployment group show -g $RG -n ai-fiqh-stage1 --query properties.outputs.acrName.value -o tsv)
+KV=$(az deployment group show -g $RG -n ai-fiqh-stage1 --query properties.outputs.keyVaultName.value -o tsv)
+echo "ACR=$ACR  KV=$KV"
+```
+
+```bash
+az acr build --registry $ACR --image ai-fiqh-web:v1 --file docker/web.Dockerfile .
+az acr build --registry $ACR --image ai-fiqh-ollama:v1 --file docker/ollama.Dockerfile --timeout 7200 .
+```
+
+The Ollama build pulls the ~7.4 GB model inside Azure's network, so it
+should take a fraction of the ~45 minutes it took locally. The stored image
+is ~12 GB, at or above ACR Basic's included 10 GiB — a small per-GB overage.
+
+If ACR Tasks is disabled on the subscription (`TasksOperationsNotAllowed`),
+fall back to a local cross-platform build. It is slow — emulated amd64 plus a
+~12 GB upload:
+
+```bash
+az acr login --name $ACR
+docker buildx build --platform linux/amd64 -f docker/web.Dockerfile \
+  -t $ACR.azurecr.io/ai-fiqh-web:v1 --push .
+docker buildx build --platform linux/amd64 -f docker/ollama.Dockerfile \
+  -t $ACR.azurecr.io/ai-fiqh-ollama:v1 --push .
+```
+
+### 4. Secrets — from `.env`, never through a committed file
+
+```bash
+( set -a; source .env; set +a
+  az keyvault secret set --vault-name $KV --name voyage-api-key       --value "$VOYAGE_API_KEY"       -o none
+  az keyvault secret set --vault-name $KV --name anthropic-api-key    --value "$ANTHROPIC_API_KEY"    -o none
+  az keyvault secret set --vault-name $KV --name azure-openai-api-key --value "$AZURE_OPENAI_API_KEY" -o none )
+```
+
+All three must exist before stage 2, because the web app references each one.
+A `Forbidden` straight after stage 1 is role propagation — wait a minute and
+retry.
+
+### 5. Stage 2 — the apps
+
+```bash
+az deployment group create --name ai-fiqh-stage2 --resource-group $RG \
+  --parameters infra/main.bicepparam \
+  --parameters deployApps=true deployerPrincipalId="$ME"
+```
+
+If it fails on an image pull or a Key Vault reference, the identities' roles
+had not propagated yet. Re-run the same command.
+
+### 6. Smoke test
+
+```bash
+WEB=$(az deployment group show -g $RG -n ai-fiqh-stage2 --query properties.outputs.webFqdn.value -o tsv)
+curl -s -o /dev/null -w "%{http_code}\n" https://$WEB/_stcore/health   # expect 200
+echo "https://$WEB"
+```
+
+In the browser:
+
+1. **Primary path** — *"Does laughing aloud break wudu?"* should answer via
+   Azure OpenAI with citations. A connection or 403 error here most likely
+   means the Azure OpenAI resource restricts public network access, which is
+   outside this template's scope.
+2. **Fallback path** — *"Where should the pebbles for stoning at the Jamarah
+   be collected from?"* retrieves the chunk Azure's content filter blocks
+   (tracker, 2026-09-10). Expect the fallback warning and
+   `answered by ollama/gemma4:12b`.
+
+### 7. Measure the cold start (§4c's open item)
+
+```bash
+az containerapp replica list -n ai-fiqh-ollama -g $RG -o table            # expect none
+az containerapp logs show -n ai-fiqh-ollama -g $RG --type system --follow  # watch it wake
+```
+
+Leave the app idle long enough to be at zero replicas first — the default
+scale-in cooldown is 300s, and the dedicated node deallocates after that.
+Then ask the pebbles question and time submit-to-answer. Record the result
+in §4c: it is the number that decides `minReplicas: 0` vs `1`.
+
+### 8. Shipping a change
+
+```bash
+az acr build --registry $ACR --image ai-fiqh-web:v2 --file docker/web.Dockerfile .
+az containerapp update -n ai-fiqh-web -g $RG --image $ACR.azurecr.io/ai-fiqh-web:v2
+```
+
+Then set `webImageTag = 'v2'` in `infra/main.bicepparam` too. Otherwise the
+next Bicep deploy rolls the app back to `v1`.
+
+### 9. Teardown — stops all spend
+
+```bash
+az group delete --name $RG --yes --no-wait
+# After deletion completes. Soft delete otherwise reserves the vault name for
+# 7 days, and a redeploy into the same resource group would reuse that name.
+az keyvault purge --name $KV
+```
+
+While deployed, `ai-fiqh-web` bills continuously (`minReplicas: 1` on
+Consumption). `ai-fiqh-ollama` and its dedicated node cost close to nothing
+when idle, but bill at the full dedicated rate while awake.

@@ -1,13 +1,14 @@
 using 'main.bicep'
 
-param location = 'uksouth'
+param location = 'swedencentral'
 param namePrefix = 'aifiqh'
 
-param webImageTag = 'latest'
-param ollamaImageTag = 'latest'
+// Explicit tags, not 'latest': Container Apps only rolls a new revision when
+// the image reference changes, so re-pushing under the same tag deploys
+// nothing. Bump these (v2, v3, ...) with each new image.
+param webImageTag = 'v1'
+param ollamaImageTag = 'v1'
 
-// Fill these in from your existing .env (AZURE_OPENAI_ENDPOINT /
-// AZURE_OPENAI_DEPLOYMENT) before deploying — not secrets, but specific to
-// your Azure OpenAI resource, so left as placeholders rather than guessed.
-param azureOpenAiEndpoint = 'https://<your-azure-openai-resource>.openai.azure.com/'
-param azureOpenAiDeployment = '<your-deployment-name>'
+// Not secrets, but specific to your Azure OpenAI resource (from .env).
+param azureOpenAiEndpoint = 'https://randi.cognitiveservices.azure.com/'
+param azureOpenAiDeployment = 'gpt-5.4'

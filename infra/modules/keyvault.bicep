@@ -9,6 +9,13 @@ param location string
 param name string
 param tenantId string = subscription().tenantId
 
+// Under RBAC authorization, owning the resource group does not grant
+// data-plane access: whoever runs `az keyvault secret set` needs a secrets
+// role on the vault itself. Pass the deployer's object ID to grant it here.
+param deployerPrincipalId string = ''
+
+var keyVaultSecretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
+
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: name
   location: location
@@ -21,6 +28,16 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
+  }
+}
+
+resource deployerSecretsOfficer 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployerPrincipalId)) {
+  name: guid(keyVault.id, deployerPrincipalId, keyVaultSecretsOfficerRoleId)
+  scope: keyVault
+  properties: {
+    principalId: deployerPrincipalId
+    principalType: 'User'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsOfficerRoleId)
   }
 }
 
