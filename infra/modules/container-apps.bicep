@@ -28,6 +28,13 @@ param ollamaImageTag string
 param azureOpenAiEndpoint string
 param azureOpenAiDeployment string
 
+// Sign-in (docs/deployment.md §4a). Google rather than Entra ID because the
+// Vodafone tenant blocks users from creating app registrations
+// (`allowedToCreateApps: false`, checked 2026-09-21). Empty leaves the app
+// open, as in phase 1, so this deploys safely before the Google client exists.
+param googleClientId string = ''
+var authEnabled = !empty(googleClientId)
+
 // Two findings, in order, drove where ai-fiqh-ollama runs:
 //
 // 1. 2026-09-17, locally: the Consumption plan's 8 GiB per-container ceiling
@@ -37,9 +44,10 @@ param azureOpenAiDeployment string
 //    Container Apps ingress cuts the request off at 4m0s (the 504 seen in
 //    testing). Unusable regardless of the timeout.
 //
-// So it runs on a serverless GPU profile. Consumption-GPU keeps scale-to-zero
-// (no minimumCount/maximumCount — those are Dedicated-only), and a T4's 16 GB
-// of VRAM comfortably holds this ~8 GB quantized model.
+// So it runs on a serverless GPU profile (no minimumCount/maximumCount —
+// those are Dedicated-only), and a T4's 16 GB of VRAM comfortably holds this
+// ~8 GB quantized model. Scale-to-zero turned out not to survive a GPU cold
+// start; see the ai-fiqh-ollama resource below.
 //
 // The E4 profile is still declared below only because removing a profile
 // while an app references it is a fight not worth having in one deployment;
@@ -134,7 +142,19 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-// --- ai-fiqh-ollama: the content-filter fallback, scale-to-zero ------------
+// --- ai-fiqh-ollama: the content-filter fallback, kept warm ----------------
+//
+// Scale-to-zero was tried and does not work here (2026-09-18). Starting from
+// zero took ~4 minutes to get a GPU node (four scheduling attempts, a minute
+// apart) and then 95.6s to pull the 11 GB image, all before the model loads.
+// The Container Apps ingress ends every request at 240s, so a fallback that
+// has to wake the GPU always fails. One warm replica removes all of that.
+//
+// It is also now the most expensive component: a GPU billed continuously
+// while the replica exists. Set `ollamaMinReplicas = 0` in main.bicepparam
+// to stop paying for it between sessions (the fallback then fails again
+// until it is set back to 1).
+param ollamaMinReplicas int = 1
 
 resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ai-fiqh-ollama'
@@ -179,7 +199,7 @@ resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: ollamaMinReplicas
         maxReplicas: 1
       }
     }
@@ -220,7 +240,7 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: webIdentity.id
         }
       ]
-      secrets: [
+      secrets: concat([
         {
           name: 'voyage-api-key'
           keyVaultUrl: '${keyVaultUri}secrets/voyage-api-key'
@@ -236,7 +256,16 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/azure-openai-api-key'
           identity: webIdentity.id
         }
-      ]
+      ], authEnabled ? [
+        // Read by the auth config below (`clientSecretSettingName`), not by
+        // the app. Must exist in Key Vault before this deploys, or the
+        // revision fails to start.
+        {
+          name: 'google-client-secret'
+          keyVaultUrl: '${keyVaultUri}secrets/google-client-secret'
+          identity: webIdentity.id
+        }
+      ] : [])
     }
     template: {
       containers: [
@@ -267,6 +296,53 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         minReplicas: 1
         maxReplicas: 1
       }
+    }
+  }
+}
+
+// --- Sign-in in front of ai-fiqh-web (§4a) ---------------------------------
+//
+// Container Apps authentication: the platform redirects unauthenticated
+// requests to Google and passes the signed-in identity to the app as
+// X-MS-CLIENT-PRINCIPAL* headers, so the app contains no auth code. Anyone
+// with a Google account is let in; the point is a real person, not a list.
+//
+// No token store: the app needs only the identity headers, not stored Google
+// tokens, and a token store would need a blob container.
+resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (authEnabled) {
+  parent: webApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+      redirectToProvider: 'google'
+      // Keeps the runbook's health check returning 200. It returns "ok" and
+      // nothing else, so leaving it unauthenticated exposes nothing.
+      excludedPaths: [
+        '/_stcore/health'
+      ]
+    }
+    identityProviders: {
+      google: {
+        enabled: true
+        registration: {
+          clientId: googleClientId
+          clientSecretSettingName: 'google-client-secret'
+        }
+        login: {
+          scopes: [
+            'openid'
+            'profile'
+            'email'
+          ]
+        }
+      }
+    }
+    httpSettings: {
+      requireHttps: true
     }
   }
 }

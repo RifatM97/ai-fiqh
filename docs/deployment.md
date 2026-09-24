@@ -22,7 +22,7 @@ explicit goal so later choices in this doc can be read against it.
 | Hosting stack | **Azure**, "Option A" shape (app + fallback model co-located in one environment) — see §4 |
 | Cost approach | Right-size compute, minimize idle cost via auto-shutdown / scale-to-zero rather than run everything 24/7 |
 | Learning scope | Full Azure-native stack: compute + Key Vault + Monitor/App Insights + IaC + CI/CD |
-| Auth | **Added 2026-09-16** — Container Apps built-in auth, Microsoft Entra ID, any signed-in identity let in (no allowlist) — see §4a |
+| Auth | Container Apps built-in auth, any signed-in identity let in (no allowlist). **Provider changed 2026-09-21: Google, not Entra ID** — the tenant blocks app registrations. See §4a |
 | IaC tool | **Resolved 2026-09-17** — Bicep |
 | Ollama cold start (§4c) | Bake-into-image confirmed working; **compute sizing changed** — Consumption's 8 GiB ceiling OOM-killed the model in local testing, moved to a Dedicated workload profile at 16 GiB. End-to-end Azure cold start still unmeasured |
 | Rate limiting | **Resolved 2026-09-17** — Azure API Management in front, not app-level — see §4b for a real nuance this creates |
@@ -182,6 +182,41 @@ zero and accept the cold-start cost on the rare path instead.
 | **Azure API Management** | Sole public entry point; rate limiting | Gateway policies (`rate-limit-by-key`, `validate-jwt`), VNet integration to reach a privately-networked backend — see §4b |
 
 ## 4a. Authentication
+
+### ⚑ 2026-09-21: Entra ID is not available from this account — Google instead
+
+Building phase 2 started with a read of the tenant's authorization policy,
+because an Entra ID sign-in needs an app registration:
+
+```
+allowedToCreateApps:    false
+allowedToCreateTenants: false
+directory roles held:   none
+```
+
+So no app registration can be created from this account, in the Vodafone
+tenant or in a new one. The alternatives were asking the identity team (a
+ticket, and likely only a single-tenant registration, which would make the
+app Vodafone-only), registering in a personal Entra tenant (the sign-in for
+a corporate-hosted app then lives outside Vodafone's governance), or a
+different provider.
+
+**Chosen: Google**, which Container Apps authentication supports natively,
+with the OAuth client in the user's own Google Cloud project. Everything
+else below still holds: the same platform-level mechanism, the same
+policy (any signed-in person), the same identity headers. Google accounts
+also suit a general public audience better than Microsoft ones. The
+multi-tenant Entra configuration discussed further down no longer applies.
+
+The same governance question applies to Google as to a personal Entra
+tenant, since the OAuth client sits in a personal Google account. Worth
+confirming it's covered by the policy that permits this project.
+
+Implemented in `infra/modules/container-apps.bicep` (`webAuth`, conditional
+on `googleClientId` being set) and `src/ai_fiqh/app.py` (`signed_in_line`).
+Setup steps are runbook §7b.
+
+### Original design (2026-09-16)
 
 **Chosen 2026-09-16:** Container Apps' built-in **Authentication** add-on
 (the platform-level "Easy Auth" pattern), provider **Microsoft Entra ID**,
@@ -397,15 +432,110 @@ learn: **a quantized 12B model fits in CPU memory long before it is usable at
 CPU speed.** Memory sizing was the obvious constraint and it was the wrong one
 to plan around.
 
-**Still not measured: end-to-end cold start on the GPU profile.** The 60.3s figure is model load only, on different hardware, with
-the container already running — it doesn't include pulling the (now larger,
-16 GiB-headroom) image from ACR, scheduling onto the dedicated profile, or
-that profile's own node-level cold start when scaling up from
-`minimumCount: 0`. Real end-to-end latency after a genuine scale-from-zero
-in Azure could be meaningfully higher than 60s. Whether that's acceptable
-for a fallback firing on ~2/177 chunks, or whether `minReplicas: 1` on the
-dedicated profile is worth its cost to avoid, is the concrete decision this
-number was gathered to inform — not yet made.
+### ⚑ 2026-09-18: measured — a GPU cold start cannot fit the ingress timeout
+
+The fallback finally fired for real (*"can you speak in jummah khutbah"*;
+Azure refused it) and failed with the same `504` after 241.9s. This time
+Ollama itself was not slow. The Container Apps **system** events show it never
+got to run:
+
+| time | event |
+|---|---|
+| 09:55:41 | fallback fires, request to `ai-fiqh-ollama` begins |
+| 09:56:43 → 09:59:45 | four `AssigningReplica` events, one a minute, each a new replica name: waiting for a GPU node |
+| 09:59:41 | the 240s ingress timeout ends the request |
+| 09:59:46 | `GpuDriverInfo`: pod started, CUDA driver 580.159.04 |
+| 10:01:22 | `PulledImage`: 11,045,699,584 bytes in **95.6s** |
+| 10:05:08 | KEDA scales back to 0 |
+
+So a cold start from zero is **~4 minutes to obtain a GPU node plus ~1.5
+minutes to pull the image**, before the model loads at all. The 240s ingress
+limit is fixed, so this is not a tuning problem: scale-to-zero and a
+synchronous fallback are incompatible for this image on serverless GPU.
+
+The container logs being *empty* for the whole window was the clue. Without
+the system event stream (`az containerapp logs show --type system`) this
+would have looked identical to the CPU failure the day before.
+
+**Resolved 2026-09-21: keep one warm replica** — `ollamaMinReplicas = 1` in
+`infra/main.bicepparam`. The trade is explicit: the GPU is now billed
+continuously while that replica exists, which makes it the most expensive
+component in the stack. It is a parameter so it can be set to `0` between
+sessions; the fallback then times out from cold again until it is set back.
+
+Smaller wins, not taken yet, that would shorten a cold start without fixing
+it: a smaller image (the 11 GB is the base CUDA image plus the model), and
+Container Apps' image-caching options for GPU profiles. Neither gets a
+~5-minute path under 240s.
+
+**GPU use confirmed 2026-09-23.** Ollama logs `library=CUDA compute=7.5
+name=CUDA0 description="Tesla T4"` on the warm replica — it is not silently
+running on the node's CPU. The same query shows `library=cpu` on
+2026-09-18 08:04 (the E4 run) and CUDA from 08:59 onward, so the whole arc is
+in telemetry. Note the console log stream retains only recent output and an
+idle container produces none; these lines came from Log Analytics:
+
+```bash
+WS=$(az monitor log-analytics workspace show -g $RG -n law-aifiqh --query customerId -o tsv)
+az monitor log-analytics query --workspace "$WS" --analytics-query \
+  "ContainerAppConsoleLogs_CL | where ContainerAppName_s == 'ai-fiqh-ollama' \
+   | where Log_s has 'inference compute' | project TimeGenerated, Log_s \
+   | order by TimeGenerated desc | take 5" -o json
+```
+
+### ⚑ 2026-09-23: the baked model was invisible at runtime (`HOME=/tmp`)
+
+The first question ever routed to the warm GPU replica (*"can you speak
+during jummah khutbah?"*) failed with `model 'gemma4:12b' is not pulled`.
+Ollama's own startup logs explain it:
+
+```
+Couldn't find '/tmp/.ollama/id_ed25519'. Generating new private key.
+total blobs: 0
+[GIN] ... | 404 | ... POST "/api/chat"
+```
+
+**Container Apps runs the container with `HOME=/tmp`**, so Ollama looked for
+models in `/tmp/.ollama/models` while the 11 GB baked into the image sat
+unread in `/root/.ollama/models`. Locally it ran as root with `HOME=/root`,
+which is why every local test passed. `/root` is also mode 0700, so a
+non-root runtime user could not have read it there in any case.
+
+Fixed by not depending on `HOME` at all: `ENV OLLAMA_MODELS=/models` in
+`docker/ollama.Dockerfile`, with `chmod -R a+rX` so any user can read it.
+Rebuild as `ai-fiqh-ollama:v2`.
+
+Two things worth keeping from this:
+
+- **Second environment assumption from local testing to break in Azure**,
+  after `arm64` images. Both were invisible locally because the local
+  environment was the more permissive one. "It ran on my machine" keeps
+  meaning less than it feels like it should here.
+- **It vindicates the note written on 2026-09-18** that untested insurance
+  is not known to pay out. The fallback had been deployed, warm, GPU-backed
+  and apparently healthy for five days — and could not have answered a
+  single question in that entire time. Nothing short of routing a real
+  question through it would have revealed that.
+
+### Measured 2026-09-24: the fallback works end to end
+
+With `v2` deployed, the khutbah question routed through the fallback and
+answered. From the web app's logs:
+
+| | |
+|---|---|
+| First call after the replica started | **118.1s** — includes loading the model into VRAM |
+| Subsequent calls, model resident | **14.4s** |
+
+Both fit inside the 240s ingress limit, which is the part that matters: a
+replica restart no longer breaks the fallback the way a cold node start did
+(~5½ minutes, §4c above). 14.4s on a T4 against ~12 minutes on E4 CPU is the
+whole case for the GPU profile in one comparison.
+
+**§4c is now closed.** The chain that took six days to get right —
+bake the model in, size for memory, discover CPU is unusable, move to
+serverless GPU, keep a replica warm, fix the model path — ends with a
+fallback that answers in 14 seconds.
 
 ---
 
@@ -486,10 +616,10 @@ stream carries decisions and identifiers, not what anyone asked.
   (tracker, 2026-09-10) — and as of 2026-09-18 they no longer trip the
   filter at all, so the eval would now be blind to the regression rather
   than to the block. Still worth a golden question each.
-- **The fallback has never actually fired in production** — kept as
-  insurance 2026-09-18 without a corpus re-scan, so neither its correctness
-  on the GPU profile nor its cold-start latency is known. One deliberate
-  test closes this and §4c's cold-start item together.
+- ~~**The fallback has never actually fired in production**~~ — **closed
+  2026-09-24**: it fires, runs on the T4, and answers in 14.4s warm. Finding
+  that took fixing the model path (§4c); it had been deployed and apparently
+  healthy for five days while unable to answer anything.
 - **Domain + TLS** — Container Apps gives a default `*.azurecontainerapps.io`
   hostname with managed TLS out of the box; a custom domain is optional
   polish, not a blocker.
@@ -498,11 +628,9 @@ stream carries decisions and identifiers, not what anyone asked.
 
 ## 6. Still open
 
-- **Measure end-to-end cold start on the actual Azure Dedicated profile**
-  (§4c) — local model-load time is measured (56.8s), but ACR image pull,
-  scheduling, and the profile's own node-level cold start from
-  `minimumCount: 0` are not. That full number is what decides whether
-  `min replicas: 0` on `ai-fiqh-ollama` is still worth it.
+- ~~**Measure end-to-end cold start**~~ — **closed 2026-09-24** (§4c):
+  cold node start ~5½ min (unusable, hence the warm replica), first call
+  after a replica start 118.1s, warm 14.4s.
 - Real Container Apps cost estimate — not yet run through the pricing
   calculator.
 - **APIM tier that satisfies both cost-minimization and VNet integration**
@@ -516,9 +644,24 @@ stream carries decisions and identifiers, not what anyone asked.
   Easy Auth login** (§4b) — the main unresolved design question this pass
   created; leaning toward APIM doing coarse/identity-blind limiting with an
   app-level per-principal counter behind it, not committed.
-- **Entra ID app registration must be set multi-tenant + personal Microsoft
-  accounts** (§4a) — decided, not yet built; easy to get wrong by leaving
-  the single-tenant default in place.
+- ~~**Entra ID app registration must be set multi-tenant + personal Microsoft
+  accounts**~~ — superseded 2026-09-21: the tenant blocks app registrations,
+  so sign-in uses Google (§4a).
+- **⚑ Google consent screen is currently `Internal`** — verified working
+  2026-09-23, but only Vodafone Workspace accounts can sign in; a personal
+  Gmail account is refused. Switching User type to **External** (and
+  publishing it) is what makes the app public as §4a intends. If the
+  Workspace org forbids External apps, this stays a Vodafone-only tool —
+  the same outcome as the single-tenant Entra registration that was
+  rejected, and worth deciding deliberately rather than by default.
+- **Google consent screen must also be published** (§7b step 1) — left in
+  "Testing", only up to 100 listed test users can sign in, which quietly
+  turns "anyone who signs in" into "people I added".
+- **Phase 3 will move the sign-in callback.** Once APIM is the public
+  entry point, the Google callback URI has to be APIM's hostname, and the auth
+  config needs a forward-proxy convention (`proxy-convention` in `az
+  containerapp auth update`). Without it, Container Apps builds callback URLs
+  from the internal host and sign-in breaks.
 - CI/CD pipeline shape — not sketched.
 
 ---
@@ -662,17 +805,40 @@ In the browser:
    (tracker, 2026-09-10). Expect the fallback warning and
    `answered by ollama/gemma4:12b`.
 
-### 7. Measure the cold start (§4c's open item)
+### 7. Check the fallback's warm path (§4c's open item)
+
+With `ollamaMinReplicas = 1` there should always be one replica running:
 
 ```bash
-az containerapp replica list -n ai-fiqh-ollama -g $RG -o table            # expect none
-az containerapp logs show -n ai-fiqh-ollama -g $RG --type system --follow  # watch it wake
+az containerapp replica list -n ai-fiqh-ollama -g $RG -o table   # expect one, Running
 ```
 
-Leave the app idle long enough to be at zero replicas first — the default
-scale-in cooldown is 300s, and the dedicated node deallocates after that.
-Then ask the pebbles question and time submit-to-answer. Record the result
-in §4c: it is the number that decides `minReplicas: 0` vs `1`.
+Confirm Ollama found the GPU. Without this line it silently runs on the
+node's CPU, which is the ~12-minute path from 2026-09-18:
+
+```bash
+az containerapp logs show -n ai-fiqh-ollama -g $RG --tail 300 | grep -i "inference compute"
+# want: library=CUDA ... name=... "Tesla T4"
+```
+
+Then ask a question Azure refuses (*"can you speak in jummah khutbah"* did,
+on 2026-09-18) and read the web app's timings:
+
+```bash
+az containerapp logs show -n ai-fiqh-web -g $RG --follow | grep ai_fiqh
+# want: "falling back to ollama/gemma4:12b", then "answered_by=ollama/gemma4:12b in N.Ns"
+```
+
+Record `N` in §4c. The first question after the replica starts also pays
+the model load; ask twice and record both.
+
+If a replica is missing or a question times out after 240s, read the
+system events. The container's own logs are empty when it never started,
+which is how the 2026-09-18 cold start was diagnosed:
+
+```bash
+az containerapp logs show -n ai-fiqh-ollama -g $RG --type system --tail 50
+```
 
 ### 8. Shipping a change
 
@@ -693,6 +859,100 @@ az group delete --name $RG --yes --no-wait
 az keyvault purge --name $KV
 ```
 
-While deployed, `ai-fiqh-web` bills continuously (`minReplicas: 1` on
-Consumption). `ai-fiqh-ollama` and its dedicated node cost close to nothing
-when idle, but bill at the full dedicated rate while awake.
+While deployed, both apps bill continuously: `ai-fiqh-web` (`minReplicas: 1`
+on Consumption) and, far more expensively, `ai-fiqh-ollama` on its T4 GPU
+(`ollamaMinReplicas = 1`). To stop the GPU cost without tearing everything
+down, set `ollamaMinReplicas = 0` in `infra/main.bicepparam` and re-run
+stage 2. The fallback then fails from cold until it is set back to `1`.
+
+---
+
+## 7b. Runbook — Phase 2: Google sign-in
+
+Adds sign-in in front of `ai-fiqh-web` (§4a). Needs the phase 1 variables
+(`RG`, `KV`, `ACR`, `ME`; see §7 steps 0 and 3). The app's address, which
+Google needs to know:
+
+```bash
+WEB=$(az containerapp show -n ai-fiqh-web -g $RG --query properties.configuration.ingress.fqdn -o tsv)
+echo "origin:   https://$WEB"
+echo "callback: https://$WEB/.auth/login/google/callback"
+```
+
+### 1. Google OAuth client (Google Cloud Console, manual)
+
+1. Create a project, then **APIs & Services → OAuth consent screen**
+   (**Audience** in the newer console). User type **External**; scopes
+   `openid`, `email`, `profile` only.
+   **User type is the setting that decides who can sign in.** Left as
+   **Internal**, only accounts inside the Workspace organisation that owns
+   the project get in, and everyone else is refused with *"blocked sign in
+   from outside organization"* (Google's `org_internal` error) — observed
+   2026-09-23, when a Vodafone account signed in and a personal Gmail
+   account did not.
+2. **Publish it ("In production").** In "Testing", only listed test users
+   (max 100) can sign in. With only these basic scopes, publishing shouldn't
+   require Google's verification review.
+3. **Credentials → Create credentials → OAuth client ID**, type **Web
+   application**. Authorised JavaScript origin: the `origin` above. Authorised
+   redirect URI: the `callback` above.
+4. Copy the client ID and client secret.
+
+### 2. The secret goes to Key Vault first
+
+The web app references `google-client-secret`, and its revision fails to
+start if that secret is missing, so set it before deploying:
+
+```bash
+read -rs GOOGLE_SECRET   # paste, Enter — keeps it out of shell history
+az keyvault secret set --vault-name $KV --name google-client-secret --value "$GOOGLE_SECRET" -o none
+unset GOOGLE_SECRET
+```
+
+### 3. Deploy
+
+Set `googleClientId` in `infra/main.bicepparam` (it ends in
+`.apps.googleusercontent.com`; not a secret). The params file already has
+`webImageTag = 'v3'`, which carries the "Signed in as" line:
+
+```bash
+az acr build --registry $ACR --image ai-fiqh-web:v3 --file docker/web.Dockerfile .
+az deployment group create --name ai-fiqh-stage2 --resource-group $RG \
+  --parameters infra/main.bicepparam \
+  --parameters deployApps=true deployerPrincipalId="$ME"
+```
+
+### 4. Verify
+
+```bash
+curl -sI https://$WEB/ | grep -i -E "^HTTP|^location"             # 401 — see below
+curl -s -o /dev/null -w "%{http_code}\n" https://$WEB/_stcore/health   # 200, excluded from sign-in
+```
+
+**`401` is the pass here, not a failure.** Container Apps only redirects
+requests that look like browser navigation; `curl` sends no
+`Accept: text/html`, so it is treated as an API call and refused outright.
+A browser hitting the same URL gets the `302` to Google. A `200` from that
+first command means sign-in is not configured at all (verified 2026-09-23).
+
+Then in a private window:
+
+1. `https://$WEB` redirects to Google; after sign-in the app loads with
+   *"Signed in as …"*.
+2. `https://$WEB/.auth/me` shows your identity with provider `google`.
+3. **Ask a question.** Streamlit's UI runs over a WebSocket, so this is the
+   one check that proves the app still works behind the sign-in layer. It
+   couldn't be tested locally.
+4. **Sign out** returns you to the Google prompt. If the link opens in a
+   new tab, the sign-out still applies to the whole browser.
+
+**To turn sign-in off, use the CLI, not the params file:**
+
+```bash
+az containerapp auth update -n ai-fiqh-web -g $RG --enabled false
+```
+
+Emptying `googleClientId` does not do it. Stage 2 deploys in incremental
+mode, which leaves a resource that disappears from the template in place, so
+the auth config would survive. It would also lose the `google-client-secret`
+it depends on, breaking sign-in instead of disabling it.

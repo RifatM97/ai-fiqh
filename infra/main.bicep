@@ -33,6 +33,14 @@ param azureOpenAiDeployment string
 
 param dedicatedProfileWorkloadType string = 'E4'
 
+@description('Google OAuth client ID for sign-in (docs/deployment.md §4a). Empty leaves the app open. Not a secret; the client secret goes only to Key Vault as google-client-secret.')
+param googleClientId string = ''
+
+@description('1 keeps the GPU fallback warm (billed continuously); 0 stops the cost but the fallback cannot answer within the 240s ingress timeout from cold.')
+@minValue(0)
+@maxValue(1)
+param ollamaMinReplicas int = 1
+
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
 
 module logAnalytics 'modules/log-analytics.bicep' = {
@@ -76,6 +84,8 @@ module containerApps 'modules/container-apps.bicep' = if (deployApps) {
     azureOpenAiEndpoint: azureOpenAiEndpoint
     azureOpenAiDeployment: azureOpenAiDeployment
     dedicatedProfileWorkloadType: dedicatedProfileWorkloadType
+    ollamaMinReplicas: ollamaMinReplicas
+    googleClientId: googleClientId
   }
 }
 

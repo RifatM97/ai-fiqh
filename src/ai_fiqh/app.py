@@ -374,9 +374,26 @@ def tab_flashcards() -> None:
                 st.text(f"[{f.check}] {f.detail}")
 
 
+def signed_in_line() -> None:
+    """Who the platform signed in, and a way out.
+
+    Container Apps authentication handles the sign-in before any request
+    reaches this process and passes the identity as request headers. Locally
+    there is no such layer and nothing renders. The name is shown to its own
+    owner only and never logged.
+    """
+    name = st.context.headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
+    if name:
+        st.caption(
+            f"Signed in as {name} · "
+            "[Sign out](/.auth/logout?post_logout_redirect_uri=/)"
+        )
+
+
 def main() -> None:
     st.title("AI-Fiqh")
     st.caption(SOURCE)
+    signed_in_line()
     qa_tab, mcq_tab, card_tab = st.tabs(["Ask", "Practice questions", "Flashcards"])
     with qa_tab:
         tab_qa()
