@@ -1,9 +1,13 @@
 # AI-Fiqh — Deployment
 
-**Status:** Phase 1 infrastructure (`docker/`, `infra/`) written and
-validated locally on 2026-09-17 — Bicep compiles clean, both images build —
-but **not yet deployed**. The deploy sequence is §7. Auth, VNet + APIM and
-CI/CD are later phases. See `PROJECT_TRACKER.md` for build status — the app itself is
+**Status (2026-09-30):** deployed and working — both apps on Container Apps,
+Google sign-in enforced, GPU fallback answering in ~14s, secrets in Key Vault,
+logs in Log Analytics, all declared in Bicep. Runbooks: §7 (core), §7b
+(sign-in).
+
+**Phase 3 (VNet + APIM) was built and then abandoned:** APIM cannot proxy
+Streamlit's WebSocket (§4b, 2026-09-30). The VNet stays, unused; rate limiting
+moves into the app and is **not yet implemented**. CI/CD is still deferred. See `PROJECT_TRACKER.md` for build status — the app itself is
 feature-complete; this is about putting it in front of users.
 
 **Reframed 2026-09-16.** This is now explicitly a learning vehicle for
@@ -25,7 +29,8 @@ explicit goal so later choices in this doc can be read against it.
 | Auth | Container Apps built-in auth, any signed-in identity let in (no allowlist). **Provider changed 2026-09-21: Google, not Entra ID** — the tenant blocks app registrations. See §4a |
 | IaC tool | **Resolved 2026-09-17** — Bicep |
 | Ollama cold start (§4c) | Bake-into-image confirmed working; **compute sizing changed** — Consumption's 8 GiB ceiling OOM-killed the model in local testing, moved to a Dedicated workload profile at 16 GiB. End-to-end Azure cold start still unmeasured |
-| Rate limiting | **Resolved 2026-09-17** — Azure API Management in front, not app-level — see §4b for a real nuance this creates |
+| Rate limiting | **Changed 2026-09-30** — in the app, keyed on the signed-in user. APIM was built and removed: it cannot proxy Streamlit's WebSocket (§4b) |
+| Networking | VNet + subnets deployed and kept (free, groundwork for private endpoints), but **unused** — the app runs in the original non-VNet environment |
 
 Superseded from the previous pass: the Oracle Cloud free-tier VM idea (§4,
 Option A originally) — Azure doesn't have an equivalent always-free shape
@@ -327,9 +332,70 @@ neither built:
    textbook form — a genuinely cleaner APIM lesson, just not one that
    covers the interactive UI itself.
 
-Leaning toward (1) as the pragmatic default for the UI, with (2) as a
-plausible future exercise rather than a requirement — not committed either
-way. This is the item most likely to change shape once actually built.
+### ⚑ 2026-09-30: APIM cannot serve this UI — abandoned, rate limiting moves into the app
+
+Built, deployed, and then removed. APIM Developer provisioned fine in the
+VNet and its HTTP API worked, but **a WebSocket API's URL suffix cannot
+contain a slash**, tested directly against the live instance:
+
+| WebSocket API path | result |
+|---|---|
+| `stream` | created |
+| `_stcore/stream` | rejected — *"Invalid value of the Web API URL suffix"* |
+
+Streamlit serves its UI channel at `/_stcore/stream` and the path is not
+configurable, so the gateway cannot match it. The page would load over HTTP
+and then never connect. This is risk 1 from the phase 3 plan, realised.
+
+**Decision: no gateway in front of the Streamlit UI.** Rate limiting moves
+into the app, keyed on the signed-in principal from the identity header.
+Reasons, in order:
+
+1. **It is the better limiter anyway.** The two-tier compromise above existed
+   only because APIM cannot see the identity — it is established behind the
+   gateway. An in-app counter keys on the actual user rather than an IP.
+2. **Application Gateway would work** (inside the VNet, native WebSockets,
+   WAF rate limiting) at roughly $250/month — hard to justify for an app whose
+   largest cost is already an always-on T4.
+3. **APIM gets its proper turn if the frontend is ever rebuilt** as a React
+   SPA plus a REST API: a bearer token on every request is exactly what
+   `validate-jwt` + per-user `rate-limit-by-key` are designed for. That is a
+   rewrite, not a fix, so it is a future phase rather than a repair.
+
+**What was kept:** the VNet, subnets and NSG. They cost nothing and are the
+groundwork for private endpoints to Key Vault and Azure OpenAI — a more useful
+next networking step than a gateway. `snet-apim` sits empty.
+
+**What was removed:** the APIM instance, the internal environment
+`cae-aifiqh-vnet`, and the `-vnet` apps. The original public environment
+continued serving throughout, which is why building alongside rather than
+deleting first turned out to matter.
+
+The phase 3 modules (`infra/modules/apim.bicep`, `network.bicep`,
+`private-dns.bicep`) stay in the repo behind `useVnet` / `deployApim`, both
+defaulting to false. Nothing recreates itself.
+
+### Superseded: the original two-tier design (2026-09-24)
+
+**Resolved 2026-09-24: option 1, built.** APIM rate-limits on
+`@(context.Request.IpAddress)` — coarse and identity-blind, because the
+identity is established behind the gateway, not in front of it. Per-user
+fairness keyed on the principal would need an app-level counter and is not
+built. Tier: **Developer**, the only affordable one supporting VNet
+injection (Consumption supports none; Premium/Premium v2 are the
+alternatives). Implemented in `infra/modules/apim.bicep`; runbook §7c.
+
+Two things this forced, both verified rather than assumed:
+
+- **A new environment.** `az containerapp env update` has no VNet flag — a
+  VNet can only be set at creation. So phase 3 replaces `cae-aifiqh` with
+  `cae-aifiqh-vnet`, and since an app cannot move between environments, the
+  old one is deleted first. That means an outage of roughly an hour, most of
+  it waiting for APIM to provision.
+- **Manual private DNS.** An internal environment on a custom VNet has no DNS
+  of its own, so `modules/private-dns.bicep` creates the zone, the VNet link
+  and a wildcard A record to the environment's static IP. Without it APIM
+  cannot resolve the backend at all.
 
 ### Considerations
 
@@ -633,8 +699,24 @@ stream carries decisions and identifiers, not what anyone asked.
   after a replica start 118.1s, warm 14.4s.
 - Real Container Apps cost estimate — not yet run through the pricing
   calculator.
-- **APIM tier that satisfies both cost-minimization and VNet integration**
-  (§4b) — needs a current capability check, not yet chosen.
+- ~~**APIM tier that satisfies both cost-minimization and VNet integration**~~
+  — **resolved 2026-09-24**: Developer tier. Cheapest with VNet injection,
+  at the cost of no SLA and a 30–45 minute provision.
+- ~~**Streamlit's WebSocket through APIM is unproven**~~ — **answered
+  2026-09-30, negatively**: a WebSocket API's URL suffix cannot contain a
+  slash, so `/_stcore/stream` is unmatchable and APIM was removed (§4b).
+- **Rate limiting is not implemented** — the plan is now an in-app per-user
+  cap keyed on the identity header, replacing the gateway. Until it exists,
+  a signed-in user can spend Azure OpenAI, Voyage and GPU time without limit.
+  Billing alerts on all three are still the only backstop.
+- **The VNet is deployed but unused** — `snet-aca` has no environment in it
+  and `snet-apim` is empty, since the app runs in the original non-VNet
+  environment. Free to keep, and the obvious use is private endpoints to Key
+  Vault and Azure OpenAI rather than another gateway attempt.
+- **If the frontend is ever rebuilt as React + REST**, revisit APIM: a
+  bearer token per request is what makes `validate-jwt` plus per-user
+  `rate-limit-by-key` work, which is the identity-aware limiting this phase
+  could not deliver.
 - **Confirm the actual Dedicated workload profile SKU** (§4c,
   `infra/modules/container-apps.bicep`'s `dedicatedProfileWorkloadType`,
   currently a placeholder `'E4'`) is genuinely offered in the target region
@@ -946,6 +1028,10 @@ Then in a private window:
 4. **Sign out** returns you to the Google prompt. If the link opens in a
    new tab, the sign-out still applies to the whole browser.
 
+**⚑ Phase 3 will change this app's public hostname.** Once APIM fronts it, the
+Google client needs APIM's gateway hostname as an origin and callback — see
+§7c step 5.
+
 **To turn sign-in off, use the CLI, not the params file:**
 
 ```bash
@@ -956,3 +1042,158 @@ Emptying `googleClientId` does not do it. Stage 2 deploys in incremental
 mode, which leaves a resource that disappears from the template in place, so
 the auth config would survive. It would also lose the `google-client-secret`
 it depends on, breaking sign-in instead of disabling it.
+
+---
+
+## 7c. Runbook — Phase 3: VNet + API Management (⚑ SUPERSEDED)
+
+> **Do not follow this.** APIM was built from it and then removed: it cannot
+> proxy Streamlit's WebSocket (§4b, 2026-09-30). Kept for the VNet and
+> private-DNS steps, which are still valid and still deployed, and as the
+> record of what was tried. Rate limiting now belongs in the app.
+
+Makes APIM the only public entry point and rate-limits it (§4b). New modules:
+`infra/modules/network.bicep`, `private-dns.bicep`, `apim.bicep`.
+
+**Read this before starting — two things are unlike earlier phases:**
+
+- **No outage, but two of everything for a while.** The new environment runs
+  beside the old one until you delete the old one, so briefly two GPU replicas
+  could exist. Subscription T4 quota isn't reported by the usages API, so
+  headroom for two is unverified — step 2 frees the old GPU first to avoid
+  finding out the hard way.
+- **Cost rises.** APIM Developer is roughly $50/month on top of the always-on
+  T4. Confirm in the Azure Pricing Calculator first.
+
+**The new environment is built alongside the old one, under new names.** A
+container app cannot be moved between environments (`managedEnvironmentId` is
+immutable), and app names are unique per *resource group* rather than per
+environment — so reusing `ai-fiqh-web` would target the existing app and try
+to move it, which fails. The new apps are therefore `ai-fiqh-web-vnet` and
+`ai-fiqh-ollama-vnet`, and the old environment is deleted only once the new
+one is verified. The managed identities keep their names, so their existing
+role assignments are reused rather than duplicated.
+
+Trade-off accepted: the app keeps serving throughout, but the names carry the
+`-vnet` suffix permanently unless you later delete and recreate them.
+
+```bash
+RG=rg-ai-fiqh-learn
+ME=$(az ad signed-in-user show --query id -o tsv)
+```
+
+### 1. VNet only — fast, and de-risks the slow steps
+
+```bash
+az deployment group create --name ai-fiqh-stage3-net --resource-group $RG \
+  --parameters infra/main.bicepparam \
+  --parameters deployApps=false useVnet=true
+
+az network vnet subnet list -g $RG --vnet-name vnet-aifiqh \
+  -o table --query "[].{name:name, prefix:addressPrefix, delegation:delegations[0].serviceName}"
+```
+
+Expect `snet-aca` (`10.0.0.0/23`, delegated `Microsoft.App/environments`) and
+`snet-apim` (`10.0.4.0/27`). A wrong NSG rule here would otherwise surface
+only after APIM's 45-minute provision fails.
+
+### 2. Free the old GPU (keep the app serving)
+
+The old `ai-fiqh-ollama` holds a T4 while warm, and the new one will want
+another. Scale the old one to zero so the new environment can get a GPU; the
+old web app keeps serving, only its fallback goes cold:
+
+```bash
+az containerapp update -n ai-fiqh-ollama -g $RG --min-replicas 0
+```
+
+### 3. New internal environment, both apps, private DNS
+
+```bash
+az deployment group create --name ai-fiqh-stage3-env --resource-group $RG \
+  --parameters infra/main.bicepparam \
+  --parameters deployApps=true deployerPrincipalId="$ME" \
+               useVnet=true environmentName=cae-aifiqh-vnet \
+               webAppName=ai-fiqh-web-vnet ollamaAppName=ai-fiqh-ollama-vnet
+```
+
+The GPU node is provisioned (~5½ min) and the 11 GB image pulled again (~96s).
+The new apps have no public endpoint — by design — while the old ones keep
+serving on the original URL until step 7.
+
+**Pass the same `webAppName` / `ollamaAppName` on every later deployment in
+this phase.** Omitting them falls back to the defaults, which targets the old
+apps and attempts the environment move that cannot work.
+
+### 4. APIM — the slow one
+
+```bash
+az deployment group create --name ai-fiqh-stage3-apim --resource-group $RG \
+  --parameters infra/main.bicepparam \
+  --parameters deployApps=true deployerPrincipalId="$ME" \
+               useVnet=true environmentName=cae-aifiqh-vnet \
+               webAppName=ai-fiqh-web-vnet ollamaAppName=ai-fiqh-ollama-vnet \
+               deployApim=true apimPublisherEmail="you@example.com"
+```
+
+This same run also sets the app's forward-proxy convention, so sign-in
+redirects use APIM's hostname instead of the internal one. Then:
+
+```bash
+APIM_URL=$(az deployment group show -g $RG -n ai-fiqh-stage3-apim --query properties.outputs.publicUrl.value -o tsv)
+az deployment group show -g $RG -n ai-fiqh-stage3-apim --query properties.outputs.signInRedirectUri.value -o tsv
+```
+
+### 5. Google OAuth — add the new hostname
+
+In the Google Cloud Console, add to the existing OAuth client:
+
+- Authorised JavaScript origin: the `APIM_URL` above.
+- Authorised redirect URI: the `signInRedirectUri` above.
+
+Keep the old entries until everything is confirmed, then remove them.
+
+### 6. Verify
+
+```bash
+curl -sI "$APIM_URL/" | grep -i -E "^HTTP|^location"        # 401 (see §7b step 4)
+curl -s -o /dev/null -w "%{http_code}\n" "$APIM_URL/_stcore/health"   # 200
+for i in $(seq 1 70); do curl -s -o /dev/null -w "%{http_code} " "$APIM_URL/_stcore/health"; done; echo
+# expect 200s then 429s once past the per-minute rate limit
+```
+
+In a browser, at `APIM_URL`:
+
+1. Redirect to Google, sign in, app loads with *"Signed in as …"*. If the
+   redirect goes to an `internal.` hostname, the forward-proxy setting or the
+   `X-Forwarded-Host` policy is not taking effect.
+2. **Ask a question — the deciding check.** Streamlit's interface runs over a
+   WebSocket, proxied here by a separate APIM WebSocket API. If the app loads
+   but never responds, that WebSocket is the cause: see §4b's note on Front
+   Door as the alternative.
+3. Ask a question Azure's filter refuses, to confirm the GPU fallback still
+   answers.
+
+Bypass check — the new app should have no public endpoint of its own:
+
+```bash
+az containerapp show -n ai-fiqh-web-vnet -g $RG --query "properties.configuration.ingress.{external:external,fqdn:fqdn}" -o json
+curl -sS --max-time 10 "https://$(az containerapp show -n ai-fiqh-web-vnet -g $RG --query properties.configuration.ingress.fqdn -o tsv)/" 2>&1 | tail -1
+# expect external:false and the direct call to fail to resolve or connect
+```
+
+### 7. Retire the old environment
+
+Only once everything above passes. The apps must go first — an environment
+refuses to delete while it still contains any
+(`ManagedEnvironmentHasContainerApps`):
+
+```bash
+az containerapp delete -n ai-fiqh-web -g $RG --yes
+az containerapp delete -n ai-fiqh-ollama -g $RG --yes
+az containerapp env delete -n cae-aifiqh -g $RG --yes
+```
+
+Then remove the old hostname's origin and redirect URI from the Google OAuth
+client. Key Vault, ACR, the images, the identities and Log Analytics are all
+shared and untouched by this.

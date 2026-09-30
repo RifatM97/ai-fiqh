@@ -1,16 +1,17 @@
-// AI-Fiqh — Phase 1 (docs/deployment.md §4): core compute only.
-// No auth, no VNet/APIM, no CI/CD yet — see docs/deployment.md for what's
-// deliberately deferred and why.
+// AI-Fiqh infrastructure (docs/deployment.md §4). CI/CD is still deferred.
 //
-// Deployed in two stages, because the container apps cannot be created
-// until their images are in ACR and their secrets are in Key Vault — and
-// ACR and Key Vault are created by this same template:
+// Deployed in stages, because things depend on each other in ways one
+// deployment cannot resolve: the container apps need their images in ACR and
+// their secrets in Key Vault, and ACR and Key Vault are created here too.
 //
 //   Stage 1  deployApps=false  Log Analytics, ACR, Key Vault (+ your secrets role)
-//            → push images to ACR, set the three Key Vault secrets
-//   Stage 2  deployApps=true   Container Apps environment, identities, both apps
+//            → push images to ACR, set the Key Vault secrets
+//   Stage 2  deployApps=true   Container Apps environment, identities, both apps,
+//                              and sign-in once googleClientId is set (§7b)
+//   Stage 3  useVnet=true      VNet + an internal environment behind it (§7c)
+//            deployApim=true   APIM as the only public entry point (slow: 30-45+ min)
 //
-// Full command sequence: docs/deployment.md §7 (runbook).
+// Full command sequences: docs/deployment.md §7, §7b, §7c.
 
 targetScope = 'resourceGroup'
 
@@ -41,7 +42,36 @@ param googleClientId string = ''
 @maxValue(1)
 param ollamaMinReplicas int = 1
 
+// --- Phase 3: VNet + APIM (§4b) --------------------------------------------
+
+@description('true creates the VNet and puts the environment inside it, internal-only. A Container Apps environment cannot gain a VNet after creation, so this needs a NEW environmentName — the old environment is left running until you delete it.')
+param useVnet bool = false
+
+@description('Environment name. Change it together with useVnet: the VNet cannot be added to the existing one.')
+param environmentName string = 'cae-aifiqh'
+
+@description('App names. Change these alongside environmentName to build the new environment while the old one keeps serving — app names are unique per resource group, and an existing app cannot be moved between environments.')
+param webAppName string = 'ai-fiqh-web'
+
+param ollamaAppName string = 'ai-fiqh-ollama'
+
+@description('true creates API Management in the VNet. Provisioning takes 30-45+ minutes. Requires useVnet.')
+param deployApim bool = false
+
+param apimPublisherName string = 'AI-Fiqh'
+param apimPublisherEmail string = ''
+
+@description('Requests per minute per client IP at the gateway before 429 (§4b).')
+param apimRateLimitCalls int = 60
+
+@description('Overrides the hostname sign-in redirects are built from. Defaults to APIM’s gateway hostname when APIM is deployed.')
+param publicHostname string = ''
+
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
+var apimName = 'apim-${namePrefix}-${uniqueSuffix}'
+var effectivePublicHostname = !empty(publicHostname)
+  ? publicHostname
+  : (deployApim ? '${apimName}.azure-api.net' : '')
 
 module logAnalytics 'modules/log-analytics.bicep' = {
   name: 'log-analytics'
@@ -68,11 +98,23 @@ module keyVault 'modules/keyvault.bicep' = {
   }
 }
 
+module network 'modules/network.bicep' = if (useVnet) {
+  name: 'network'
+  params: {
+    location: location
+    vnetName: 'vnet-${namePrefix}'
+  }
+}
+
 module containerApps 'modules/container-apps.bicep' = if (deployApps) {
   name: 'container-apps'
   params: {
     location: location
-    environmentName: 'cae-${namePrefix}'
+    environmentName: environmentName
+    webAppName: webAppName
+    ollamaAppName: ollamaAppName
+    infrastructureSubnetId: useVnet ? network!.outputs.acaSubnetId : ''
+    publicHostname: effectivePublicHostname
     logAnalyticsCustomerId: logAnalytics.outputs.customerId
     logAnalyticsPrimarySharedKey: logAnalytics.outputs.primarySharedKey
     acrName: acr.outputs.name
@@ -89,7 +131,37 @@ module containerApps 'modules/container-apps.bicep' = if (deployApps) {
   }
 }
 
+// Without this the apps are unreachable: an internal environment on a custom
+// VNet has no DNS of its own, so APIM cannot resolve the backend (§4b).
+module privateDns 'modules/private-dns.bicep' = if (useVnet && deployApps) {
+  name: 'private-dns'
+  params: {
+    environmentDefaultDomain: containerApps!.outputs.environmentDefaultDomain
+    environmentStaticIp: containerApps!.outputs.environmentStaticIp
+    vnetId: network!.outputs.vnetId
+  }
+}
+
+module apim 'modules/apim.bicep' = if (deployApim && useVnet && deployApps) {
+  name: 'apim'
+  params: {
+    location: location
+    apimName: apimName
+    apimSubnetId: network!.outputs.apimSubnetId
+    publisherName: apimPublisherName
+    publisherEmail: apimPublisherEmail
+    webInternalFqdn: containerApps!.outputs.webInternalFqdn
+    rateLimitCalls: apimRateLimitCalls
+  }
+  dependsOn: [
+    privateDns
+  ]
+}
+
 output acrName string = acr.outputs.name
 output acrLoginServer string = acr.outputs.loginServer
 output keyVaultName string = keyVault.outputs.name
+// Internal once useVnet is set: resolvable only inside the VNet.
 output webFqdn string = deployApps ? containerApps!.outputs.webFqdn : ''
+output publicUrl string = deployApim ? apim!.outputs.gatewayUrl : (deployApps ? 'https://${containerApps!.outputs.webFqdn}' : '')
+output signInRedirectUri string = deployApim ? '${apim!.outputs.gatewayUrl}/.auth/login/google/callback' : ''
