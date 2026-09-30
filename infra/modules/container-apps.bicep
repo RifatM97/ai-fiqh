@@ -13,6 +13,21 @@
 
 param location string
 param environmentName string
+
+@description('Subnet delegated to Microsoft.App/environments. Empty keeps the environment on Microsoft-managed networking (phase 1/2 behaviour); set it to make the environment internal-only behind APIM (§4b). Cannot be changed after the environment is created — a different value means a new environment.')
+param infrastructureSubnetId string = ''
+
+// App names are parameters so a new environment can be built and tested while
+// the old one still serves traffic: a container app name is unique per
+// resource group, not per environment, and an existing app cannot be moved to
+// another environment. The managed identities keep their names either way, so
+// their existing role assignments are reused rather than duplicated.
+param webAppName string = 'ai-fiqh-web'
+param ollamaAppName string = 'ai-fiqh-ollama'
+
+@description('Hostname APIM serves the app on. Sets the auth layer to build sign-in redirects from X-Forwarded-Host, without which sign-in breaks behind the gateway.')
+param publicHostname string = ''
+
 param logAnalyticsCustomerId string
 @secure()
 param logAnalyticsPrimarySharedKey string
@@ -112,10 +127,19 @@ resource ollamaAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 // --- Environment -------------------------------------------------------------
 
+var vnetIntegrated = !empty(infrastructureSubnetId)
+
 resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: environmentName
   location: location
   properties: {
+    // internal: true removes the environment's public endpoint entirely, so
+    // APIM becomes the only way in (§4b). Requires the private DNS zone from
+    // modules/private-dns.bicep, or nothing can resolve the apps.
+    vnetConfiguration: vnetIntegrated ? {
+      infrastructureSubnetId: infrastructureSubnetId
+      internal: true
+    } : null
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -157,7 +181,7 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 param ollamaMinReplicas int = 1
 
 resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ai-fiqh-ollama'
+  name: ollamaAppName
   location: location
   identity: {
     type: 'UserAssigned'
@@ -209,7 +233,7 @@ resource ollamaApp 'Microsoft.App/containerApps@2024-03-01' = {
 // --- ai-fiqh-web: the Streamlit app, always warm ---------------------------
 
 resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ai-fiqh-web'
+  name: webAppName
   location: location
   identity: {
     type: 'UserAssigned'
@@ -226,11 +250,11 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
-      // External for now — becomes internal-only once APIM is the sole
-      // public entry point, per docs/deployment.md §4b. Deliberate interim
-      // state for this phase, not an oversight.
+      // Internal once the environment is VNet-integrated: APIM is then the
+      // only public entry point (§4b), and the app has no public endpoint of
+      // its own to bypass it with.
       ingress: {
-        external: true
+        external: !vnetIntegrated
         targetPort: 8000
         transport: 'auto'
       }
@@ -343,9 +367,20 @@ resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (auth
     }
     httpSettings: {
       requireHttps: true
+      // Behind APIM the app only ever sees its own internal hostname, so
+      // sign-in redirects would point somewhere the browser cannot reach.
+      // 'Standard' makes the auth layer trust X-Forwarded-Host / -Proto,
+      // which the APIM policy sets (§4b).
+      forwardProxy: empty(publicHostname) ? null : {
+        convention: 'Standard'
+      }
     }
   }
 }
 
 output environmentDefaultDomain string = environment.properties.defaultDomain
+output environmentStaticIp string = environment.properties.staticIp
+// Internal ingress still reports an FQDN here; it just resolves only inside
+// the VNet once the environment is internal.
 output webFqdn string = webApp.properties.configuration.ingress.fqdn
+output webInternalFqdn string = '${webAppName}.internal.${environment.properties.defaultDomain}'
