@@ -14,8 +14,11 @@
 param location string
 param environmentName string
 
-@description('Subnet delegated to Microsoft.App/environments. Empty keeps the environment on Microsoft-managed networking (phase 1/2 behaviour); set it to make the environment internal-only behind APIM (§4b). Cannot be changed after the environment is created — a different value means a new environment.')
+@description('Subnet delegated to Microsoft.App/environments. Empty keeps the environment on Microsoft-managed networking. Cannot be changed after the environment is created — a different value means a new environment.')
 param infrastructureSubnetId string = ''
+
+@description('true removes the environment public endpoint (only reachable from the VNet). false keeps a public endpoint while still being in the VNet, which is what lets private endpoints to Key Vault and Azure OpenAI be added later. Fixed at creation, like the subnet.')
+param environmentInternal bool = false
 
 // App names are parameters so a new environment can be built and tested while
 // the old one still serves traffic: a container app name is unique per
@@ -133,12 +136,14 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: environmentName
   location: location
   properties: {
-    // internal: true removes the environment's public endpoint entirely, so
-    // APIM becomes the only way in (§4b). Requires the private DNS zone from
-    // modules/private-dns.bicep, or nothing can resolve the apps.
+    // VNet membership and public reachability are independent. internal: false
+    // keeps a public endpoint while putting the apps in the VNet — the outbound
+    // path runs through the subnet, and private endpoints become possible.
+    // internal: true needs the private DNS zone from private-dns.bicep, or
+    // nothing can resolve the apps at all.
     vnetConfiguration: vnetIntegrated ? {
       infrastructureSubnetId: infrastructureSubnetId
-      internal: true
+      internal: environmentInternal
     } : null
     appLogsConfiguration: {
       destination: 'log-analytics'
@@ -250,11 +255,10 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
-      // Internal once the environment is VNet-integrated: APIM is then the
-      // only public entry point (§4b), and the app has no public endpoint of
-      // its own to bypass it with.
+      // Public unless the whole environment is internal — an app cannot have a
+      // public endpoint in an internal environment.
       ingress: {
-        external: !vnetIntegrated
+        external: !environmentInternal
         targetPort: 8000
         transport: 'auto'
       }

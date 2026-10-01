@@ -5,9 +5,11 @@ Google sign-in enforced, GPU fallback answering in ~14s, secrets in Key Vault,
 logs in Log Analytics, all declared in Bicep. Runbooks: §7 (core), §7b
 (sign-in).
 
-**Phase 3 (VNet + APIM) was built and then abandoned:** APIM cannot proxy
-Streamlit's WebSocket (§4b, 2026-09-30). The VNet stays, unused; rate limiting
-moves into the app and is **not yet implemented**. CI/CD is still deferred. See `PROJECT_TRACKER.md` for build status — the app itself is
+**As of 2026-10-01** both apps run inside the VNet (`cae-aifiqh-net` in
+`snet-aca`) with a public endpoint. APIM was built and removed — it cannot proxy
+Streamlit's WebSocket (§4b) — and rate limiting lives in the app instead (§4c).
+Current architecture: §4 *As built*. Still outstanding: private endpoints,
+billing alerts, Application Insights, CI/CD. See `PROJECT_TRACKER.md` for build status — the app itself is
 feature-complete; this is about putting it in front of users.
 
 **Reframed 2026-09-16.** This is now explicitly a learning vehicle for
@@ -110,81 +112,84 @@ resources are actually being provisioned.
 
 ## 4. Architecture — Azure-native, Container Apps
 
-### Shape
+### As built (2026-10-01)
 
-Two container apps in one **Azure Container Apps environment** (shared
-virtual network, one Log Analytics workspace), rather than one VM running
-two processes:
+Verified against the live resource group, not the plan. Two container apps in
+one VNet-integrated Container Apps environment, with sign-in in front and no
+gateway:
 
-```
-                          Public internet
-                                │
-                                ▼
-                 Azure API Management (sole public
-                 entry point — rate limiting, §4b)
-                                │
-                                ▼
-                    Microsoft Entra ID (OIDC login)
-                              │
-                              ▼
-              Container Apps Authentication (Easy Auth)
-              — validates token before a request reaches
-                the app; app never sees an unauthenticated
-                request to a protected route —
-                              │
-┌─ Azure Container Apps environment ──────────┼───────────────┐
-│           (VNet-integrated — reachable only from APIM,        │
-│            no ingress is public on either app any more)       │
-│                                              ▼                │
-│  ┌─ ai-fiqh-web ──────────┐      ┌─ ai-fiqh-ollama ───────┐ │
-│  │ Streamlit app           │─────▶│ Ollama + gemma4:12b     │ │
-│  │ min replicas: 1          │      │ min replicas: 0         │ │
-│  │ (always reachable)       │      │ (true scale-to-zero,    │ │
-│  │ internal ingress only,   │      │ model baked into image  │ │
-│  │ reachable via APIM only  │      │ internal ingress only — │ │
-│  │                          │      │ never exposed publicly  │ │
-│  └──────────────────────────┘      └──────────────────────────┘
-│           │                                    │
-│           ▼                                    ▼
-│     Key Vault (secrets via managed identity, no .env in the image)
-│     Log Analytics + Application Insights (both apps' logs/metrics)
-└──────────────────────────────────────────────────────────────┘
-        │                          │
-        ▼                          ▼
-  Azure OpenAI (primary)     Voyage API (retrieval)
-  Anthropic (kept, optional)
+```mermaid
+flowchart TB
+    user([Browser])
+    google[[Google OAuth<br/>consent screen: Internal]]
+
+    subgraph rg["rg-ai-fiqh-learn · Sweden Central"]
+        subgraph vnet["vnet-aifiqh · 10.0.0.0/16"]
+            subgraph snetaca["snet-aca · 10.0.0.0/23 · delegated to Microsoft.App/environments"]
+                subgraph env["cae-aifiqh-net · internal: false"]
+                    ingress["Ingress · public"]
+                    auth["Sign-in layer<br/>Container Apps authentication"]
+                    web["ai-fiqh-web<br/>Streamlit<br/>Consumption profile · 1 replica<br/>per-user rate limit · 20 per hour"]
+                    ollama["ai-fiqh-ollama<br/>Ollama + gemma4:12b<br/>gpu-ollama profile · Tesla T4<br/>1 warm replica · internal ingress"]
+                end
+            end
+            snetapim["snet-apim · 10.0.4.0/27 + nsg-apim<br/>empty — APIM removed, §4b"]
+        end
+        kv[(Key Vault)]
+        acr[(Container Registry)]
+        law[(Log Analytics)]
+    end
+
+    aoai["Azure OpenAI · gpt-5.4<br/>primary"]
+    voyage["Voyage<br/>embeddings + rerank"]
+
+    user --> ingress --> auth --> web
+    auth -. "OAuth redirect" .-> google
+    web -- "content-filter refusal only" --> ollama
+    web --> aoai
+    web --> voyage
+    kv -. "secrets · id-ai-fiqh-web" .-> web
+    acr -. "images · AcrPull" .-> web
+    acr -. "images · AcrPull" .-> ollama
+    web -. "stdout" .-> law
+    ollama -. "stdout" .-> law
 ```
 
-**Ingress, now consistent across both apps:** both `ai-fiqh-web` and
-`ai-fiqh-ollama` are **internal-only ingress** — APIM becomes the one public
-door for the whole environment, rather than `ai-fiqh-web` having its own
-public endpoint alongside APIM. This is a change from the previous pass
-(where `ai-fiqh-web` had external ingress and only the Ollama app was
-internal) and a direct consequence of putting APIM in front for rate
-limiting — see §4b for what this requires (VNet integration) and the one
-real open question it creates (reconciling APIM's request-level rate
-limiting with Container Apps' session-based browser login).
+| | |
+|---|---|
+| Public entry | Container Apps ingress on `ai-fiqh-web`, directly — no gateway (APIM could not proxy Streamlit's WebSocket, §4b) |
+| Sign-in | Container Apps authentication with Google; consent screen *Internal*, so Vodafone Workspace accounts only (§4a) |
+| Rate limiting | In the app, per signed-in user, 20 model calls per rolling hour (§4c) |
+| Networking | In the VNet with a public endpoint (`internal: false`). Outbound calls to Azure OpenAI and Voyage still cross the public internet — no private endpoints yet |
+| Fallback | Only on an Azure content-filter refusal; T4 replica kept warm because a cold start (~5½ min) exceeds the 240s ingress limit (§4c) |
+| Identity | User-assigned managed identities `id-ai-fiqh-web` / `id-ai-fiqh-ollama`; no keys in images or `.env` |
+| Source of truth | `infra/` + `infra/main.bicepparam` — the params file now records the VNet environment, so a plain redeploy reproduces this |
 
-**Why two apps with different scaling, not one:** the web app needs to feel
-responsive to a visitor at any time, so it stays warm (`min replicas: 1`).
-The Ollama fallback fires rarely — 2/177 chunks per the 2026-09-10
-tracker entry — so paying to keep an 8GB-class container warm 24/7 for
-something that fires a handful of times a week is the wrong trade. Scale to
-zero and accept the cold-start cost on the rare path instead.
+**Why two apps with different profiles, not one:** `ai-fiqh-web` is light
+(1 vCPU / 2 GiB) and stays on Consumption. It is held at exactly one replica on
+purpose — the retriever cache and the rate limiter both live in-process, so a
+second replica would split both. `ai-fiqh-ollama` needs a GPU to answer inside
+the ingress timeout at all (CPU inference took ~12 minutes per prompt, §4c), and
+is kept warm because a GPU cold start cannot fit that timeout either.
 
 ### Components and what each one teaches
 
-| Component | Role | Learning surface |
-|---|---|---|
-| **Azure Container Registry (ACR)** | Stores the two built images (`ai-fiqh-web`, `ai-fiqh-ollama`) | Image build/push, registry auth from CI |
-| **Container Apps environment** | Hosts both apps, shared networking | KEDA-based scaling rules, `min`/`max` replicas, ingress |
-| **Key Vault** | Holds `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, `AZURE_OPENAI_API_KEY`, etc. | Managed identity, secret references instead of env files |
-| **Managed identity** (system-assigned, on `ai-fiqh-web`) | Lets the app pull secrets from Key Vault without a stored credential | Passwordless Azure auth pattern |
-| **Log Analytics + Application Insights** | Centralized logs, request traces, latency | Real observability instead of `print()` — first place to see `Answer.fallback_used` and `Answer.low_confidence` actually fire in production |
-| **Bicep** (IaC) | Declares all of the above as code | Repeatable environments, diffable infra, no portal clicking to reproduce |
-| **GitHub Actions + OIDC federated credential** | Builds images, pushes to ACR, deploys new revisions | No long-lived Azure secret sitting in GitHub — federated identity trust instead |
-| **Container Apps Authentication + Entra ID app registration** | Gates `ai-fiqh-web`'s route behind sign-in | OIDC/OAuth2 login flow, platform-level auth with no app code, principal-header propagation — see §4a |
-| **Azure API Management** | Sole public entry point; rate limiting | Gateway policies (`rate-limit-by-key`, `validate-jwt`), VNet integration to reach a privately-networked backend — see §4b |
+| Component | Status | Role | Learning surface |
+|---|---|---|---|
+| **Azure Container Registry (ACR)** | ✅ deployed | Stores the two images; built in Azure with `az acr build` (amd64) | Image build/push, registry auth via managed identity |
+| **Container Apps environment** | ✅ deployed | Hosts both apps, in the VNet, with a Consumption and a T4 GPU workload profile | Workload profiles, KEDA scaling, ingress, cold starts |
+| **VNet + subnets + NSG** | ✅ deployed | Environment sits in `snet-aca`; `snet-apim` empty | Subnet delegation and sizing, immutable network settings |
+| **Key Vault** | ✅ deployed | Holds the API keys and the Google client secret | Secret references instead of env files, RBAC data-plane roles |
+| **Managed identities** (user-assigned, one per app) | ✅ deployed | Pull images and read secrets with no stored credential | Why user-assigned beats system-assigned for first-start ordering |
+| **Log Analytics** | ✅ deployed | Console and system logs for both apps, queried with KQL | Diagnosing from system events when a container never starts |
+| **Bicep** (IaC) | ✅ in use | Declares everything; `main.bicepparam` holds the running state | Staged deployments, what-if, incremental mode's limits |
+| **Container Apps authentication + Google** | ✅ deployed | Sign-in before any request reaches the app | OAuth redirect flow, principal headers — see §4a |
+| **In-app rate limiter** | ✅ built (image `v4`) | Per-user cap on model calls | See §4c |
+| **Application Insights** | ⏳ not built | Tracing and dashboards on top of the logs | — |
+| **GitHub Actions + OIDC federated credential** | ⏳ not built | Build images, deploy revisions | Federated identity instead of a stored secret |
+| **Private endpoints** (Key Vault, Azure OpenAI) | ⏳ next | Keep those calls off the public internet | The reason the VNet was kept |
+| ~~Entra ID app registration~~ | ❌ blocked | — | Tenant forbids app registrations; Google used instead (§4a) |
+| ~~Azure API Management~~ | ❌ removed | — | Cannot proxy Streamlit's WebSocket (§4b); revisit with a React + REST frontend |
 
 ## 4a. Authentication
 
@@ -365,6 +370,14 @@ Reasons, in order:
 **What was kept:** the VNet, subnets and NSG. They cost nothing and are the
 groundwork for private endpoints to Key Vault and Azure OpenAI — a more useful
 next networking step than a gateway. `snet-apim` sits empty.
+
+**Correction, same day:** the first version of this decision left the apps
+outside the VNet entirely and treated the VNet as scaffolding for later. That
+under-sold it — VNet membership and public reachability are independent
+settings, so the apps can sit in the VNet *and* keep a public endpoint
+(`internal: false`). The rebuild cost is the same whenever it happens, so
+there was no reason to defer it. `environmentInternal` is now a parameter,
+defaulting to false, and §7d rebuilds the environment inside `snet-aca`.
 
 **What was removed:** the APIM instance, the internal environment
 `cae-aifiqh-vnet`, and the `-vnet` apps. The original public environment
@@ -658,6 +671,34 @@ out. Worth deliberately exercising once — set `AI_FIQH_LLM_PROVIDER=ollama`
 on a throwaway revision, ask one question, and read the timings — which
 would also close §4c's outstanding cold-start measurement.
 
+### Rate limiting — in the app, added 2026-09-30
+
+Replaces the gateway that could not work (§4b). `within_quota()` in
+`src/ai_fiqh/app.py` allows `AI_FIQH_RATE_LIMIT_PER_HOUR` model calls per
+signed-in user per rolling hour (default 20; `0` disables), keyed on the
+`X-MS-CLIENT-PRINCIPAL-ID` header the platform sets after sign-in.
+
+Enforced inside `guarded()`, which every model call already passes through —
+so Q&A, practice questions and flashcards are all covered by one check rather
+than three. Refusal renders as a warning naming when to retry, and returns
+`None`, which callers already treat as "leave previous output alone".
+
+Deliberate properties, recorded so they are not mistaken for oversights:
+
+- **Per-user, not per-IP** — the thing APIM could not do, since sign-in
+  happens behind any gateway. This is why moving the limit into the app was an
+  improvement rather than a consolation.
+- **In-process counters.** The app runs as a single replica, so no database is
+  needed. Counts reset when the revision restarts, and would be per-replica if
+  it ever scaled out.
+- **No limit without an identity**, which is the local case — `uv run
+  streamlit run` is never throttled.
+- **Only a truncated principal prefix is logged**, consistent with not logging
+  question text or the signed-in name.
+
+It bounds what one account can spend. It does not bound total spend: that
+needs billing alerts, still outstanding.
+
 ### Logging — added 2026-09-18
 
 The deployed app was effectively unobservable: Streamlit renders results to
@@ -705,14 +746,15 @@ stream carries decisions and identifiers, not what anyone asked.
 - ~~**Streamlit's WebSocket through APIM is unproven**~~ — **answered
   2026-09-30, negatively**: a WebSocket API's URL suffix cannot contain a
   slash, so `/_stcore/stream` is unmatchable and APIM was removed (§4b).
-- **Rate limiting is not implemented** — the plan is now an in-app per-user
-  cap keyed on the identity header, replacing the gateway. Until it exists,
-  a signed-in user can spend Azure OpenAI, Voyage and GPU time without limit.
-  Billing alerts on all three are still the only backstop.
-- **The VNet is deployed but unused** — `snet-aca` has no environment in it
-  and `snet-apim` is empty, since the app runs in the original non-VNet
-  environment. Free to keep, and the obvious use is private endpoints to Key
-  Vault and Azure OpenAI rather than another gateway attempt.
+- ~~**Rate limiting is not implemented**~~ — **built 2026-09-30** (§4c below),
+  awaiting deployment as image `v4`.
+- ~~**The VNet is deployed but unused**~~ — **being fixed 2026-09-30**: §7d
+  rebuilds the environment inside `snet-aca` with a public endpoint.
+- **Private endpoints to Key Vault and Azure OpenAI** — the reason for keeping
+  the VNet, and the natural next networking phase once §7d lands. Those calls
+  currently traverse the public internet.
+- **Billing alerts on Azure OpenAI, Voyage and Anthropic** — still not set up.
+  The per-user cap bounds one account's spend, not the total.
 - **If the frontend is ever rebuilt as React + REST**, revisit APIM: a
   bearer token per request is what makes `validate-jwt` plus per-user
   `rate-limit-by-key` work, which is the identity-aware limiting this phase
@@ -1197,3 +1239,92 @@ az containerapp env delete -n cae-aifiqh -g $RG --yes
 Then remove the old hostname's origin and redirect URI from the Google OAuth
 client. Key Vault, ACR, the images, the identities and Log Analytics are all
 shared and untouched by this.
+
+---
+
+## 7d. Runbook — move the apps into the VNet, and ship the rate limiter
+
+Two changes in one pass, because both need a new revision anyway:
+
+- The environment moves into `snet-aca` with `internal: false` — in the VNet,
+  still publicly reachable. This is what makes private endpoints to Key Vault
+  and Azure OpenAI possible later.
+- Web image `v4` carries the per-user rate limiter (§4c).
+
+**Expect ~10 minutes of downtime**, and the app's hostname changes, so the
+Google OAuth client needs updating. `environmentInternal` defaults to false,
+so nothing here removes the public endpoint.
+
+```bash
+RG=rg-ai-fiqh-learn
+ME=$(az ad signed-in-user show --query id -o tsv)
+ACR=$(az deployment group show -g $RG -n ai-fiqh-stage1 --query properties.outputs.acrName.value -o tsv)
+```
+
+### 1. Build the image with the limiter
+
+```bash
+az acr build --registry $ACR --image ai-fiqh-web:v4 --file docker/web.Dockerfile .
+```
+
+Set `webImageTag = 'v4'` in `infra/main.bicepparam`.
+
+### 2. Remove the old environment
+
+An environment cannot gain a VNet, and a subnet can hold only one
+environment, so both old environments go first — the original one, and the
+internal `cae-aifiqh-vnet` left over from the abandoned phase 3, which still
+claims `snet-aca` even with no apps in it. Apps before environments:
+
+```bash
+az containerapp delete -n ai-fiqh-web -g $RG --yes
+az containerapp delete -n ai-fiqh-ollama -g $RG --yes
+az containerapp env delete -n cae-aifiqh -g $RG --yes
+az containerapp env delete -n cae-aifiqh-vnet -g $RG --yes   # if it still exists
+```
+
+Skipping the last line fails step 3 with `ManagedEnvironmentSubnetInUse`
+(seen 2026-10-01). Azure also releases the subnet asynchronously, so if step
+3 reports that error just after the delete, wait a few minutes and retry.
+
+### 3. Deploy the VNet-integrated environment
+
+Names return to `ai-fiqh-web` / `ai-fiqh-ollama` (the `-vnet` apps from the
+abandoned phase 3 are gone, so the names are free again):
+
+```bash
+az deployment group create --name ai-fiqh-vnet-env --resource-group $RG \
+  --parameters infra/main.bicepparam \
+  --parameters deployApps=true deployerPrincipalId="$ME" \
+               useVnet=true environmentName=cae-aifiqh-net
+```
+
+### 4. Point Google at the new hostname
+
+```bash
+WEB=$(az containerapp show -n ai-fiqh-web -g $RG --query properties.configuration.ingress.fqdn -o tsv)
+echo "origin:   https://$WEB"
+echo "callback: https://$WEB/.auth/login/google/callback"
+```
+
+Add both to the OAuth client, removing the previous pair once sign-in works.
+
+### 5. Verify
+
+```bash
+# in the VNet, and publicly reachable
+az containerapp env show -n cae-aifiqh-net -g $RG --query "{subnet:properties.vnetConfiguration.infrastructureSubnetId, internal:properties.vnetConfiguration.internal}" -o json
+curl -sI "https://$WEB/" | grep -i "^HTTP"        # 401 until signed in
+```
+
+Then in a browser: sign in, ask a question, and confirm the GPU fallback still
+answers a filtered question. To see the limiter work, set
+`AI_FIQH_RATE_LIMIT_PER_HOUR` low on the app and exceed it:
+
+```bash
+az containerapp update -n ai-fiqh-web -g $RG --set-env-vars AI_FIQH_RATE_LIMIT_PER_HOUR=2
+# ask three questions — the third should refuse with a retry time
+az containerapp update -n ai-fiqh-web -g $RG --set-env-vars AI_FIQH_RATE_LIMIT_PER_HOUR=20
+```
+
+The refusal is also logged: `quota reached for <prefix>…` in the log stream.

@@ -44,8 +44,11 @@ param ollamaMinReplicas int = 1
 
 // --- Phase 3: VNet + APIM (§4b) --------------------------------------------
 
-@description('true creates the VNet and puts the environment inside it, internal-only. A Container Apps environment cannot gain a VNet after creation, so this needs a NEW environmentName — the old environment is left running until you delete it.')
+@description('true creates the VNet and puts the environment inside it. A Container Apps environment cannot gain a VNet after creation, so this needs a NEW environmentName.')
 param useVnet bool = false
+
+@description('true removes the environment public endpoint (needs something inside the VNet to front it). false keeps the app publicly reachable while still in the VNet — the default, and what makes private endpoints possible later. Fixed at creation.')
+param environmentInternal bool = false
 
 @description('Environment name. Change it together with useVnet: the VNet cannot be added to the existing one.')
 param environmentName string = 'cae-aifiqh'
@@ -114,6 +117,7 @@ module containerApps 'modules/container-apps.bicep' = if (deployApps) {
     webAppName: webAppName
     ollamaAppName: ollamaAppName
     infrastructureSubnetId: useVnet ? network!.outputs.acaSubnetId : ''
+    environmentInternal: environmentInternal
     publicHostname: effectivePublicHostname
     logAnalyticsCustomerId: logAnalytics.outputs.customerId
     logAnalyticsPrimarySharedKey: logAnalytics.outputs.primarySharedKey
@@ -133,7 +137,7 @@ module containerApps 'modules/container-apps.bicep' = if (deployApps) {
 
 // Without this the apps are unreachable: an internal environment on a custom
 // VNet has no DNS of its own, so APIM cannot resolve the backend (§4b).
-module privateDns 'modules/private-dns.bicep' = if (useVnet && deployApps) {
+module privateDns 'modules/private-dns.bicep' = if (useVnet && deployApps && environmentInternal) {
   name: 'private-dns'
   params: {
     environmentDefaultDomain: containerApps!.outputs.environmentDefaultDomain

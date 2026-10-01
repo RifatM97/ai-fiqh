@@ -3,10 +3,17 @@ using 'main.bicep'
 param location = 'swedencentral'
 param namePrefix = 'aifiqh'
 
+// The running environment: in the VNet (snet-aca), still publicly reachable
+// (environmentInternal defaults to false). Kept here rather than passed on the
+// command line, so a plain redeploy reproduces what is running instead of
+// falling back to the defaults and attempting the old non-VNet environment.
+param useVnet = true
+param environmentName = 'cae-aifiqh-net'
+
 // Explicit tags, not 'latest': Container Apps only rolls a new revision when
 // the image reference changes, so re-pushing under the same tag deploys
 // nothing. Bump these (v2, v3, ...) with each new image.
-param webImageTag = 'v3'
+param webImageTag = 'v4'
 param ollamaImageTag = 'v2'
 
 // 1 = GPU fallback kept warm, billed continuously. Set to 0 between sessions

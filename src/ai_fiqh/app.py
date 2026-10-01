@@ -19,6 +19,8 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -45,6 +47,8 @@ logging.basicConfig(
 # bury the pipeline's own lines in the deployed stream.
 for _noisy in ("httpx", "httpx2", "httpcore", "urllib3"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
+
+log = logging.getLogger(__name__)
 
 st.set_page_config(page_title="AI-Fiqh", page_icon="📖", layout="centered")
 
@@ -77,6 +81,68 @@ def require_client():
         st.stop()
 
 
+RATE_LIMIT_PER_HOUR = int(os.environ.get("AI_FIQH_RATE_LIMIT_PER_HOUR", "20"))
+
+_rate_lock = threading.Lock()
+
+
+@st.cache_resource(show_spinner=False)
+def _request_times() -> dict[str, list[float]]:
+    """Per-user request timestamps, shared by every session in this process.
+
+    In-process on purpose: the app runs as a single replica, so a counter here
+    is enough and needs no database. Two consequences worth knowing rather than
+    discovering: the counts reset when the revision restarts, and they would be
+    per-replica if this ever scaled out.
+    """
+    return defaultdict(list)
+
+
+def _principal() -> str | None:
+    """Who is asking, from the headers the platform sets after sign-in.
+
+    Absent when running locally, where there is no auth layer in front — so
+    local runs are not rate limited.
+    """
+    headers = st.context.headers
+    return (
+        headers.get("X-MS-CLIENT-PRINCIPAL-ID")
+        or headers.get("X-MS-CLIENT-PRINCIPAL-NAME")
+    )
+
+
+def within_quota() -> bool:
+    """True if this user may spend another model call.
+
+    Sign-in proves a real person; this is what stops that person — or a script
+    in a loop behind their account — from spending Azure OpenAI, Voyage and GPU
+    time without bound. Renders the refusal itself, so callers only branch.
+    """
+    who = _principal()
+    if RATE_LIMIT_PER_HOUR <= 0 or who is None:
+        return True
+
+    now = time.time()
+    with _rate_lock:
+        recent = _request_times()[who]
+        recent[:] = [t for t in recent if now - t < 3600]
+        if len(recent) >= RATE_LIMIT_PER_HOUR:
+            wait_minutes = int((3600 - (now - recent[0])) // 60) + 1
+            # Identifier truncated: enough to correlate, not a stored identity.
+            log.info(
+                "quota reached for %s… (%d requests in the last hour)",
+                who[:8],
+                len(recent),
+            )
+            st.warning(
+                f"You have used this hour's {RATE_LIMIT_PER_HOUR} requests. "
+                f"Please try again in about {wait_minutes} minute(s)."
+            )
+            return False
+        recent.append(now)
+    return True
+
+
 def guarded(fn, *args, **kwargs):
     """Run a model call, turning provider failures into a message instead of a stack.
 
@@ -84,7 +150,12 @@ def guarded(fn, *args, **kwargs):
     the middle of the page tells a student nothing they can act on. Returns None
     on failure so the caller leaves previous output alone. Every provider raises
     into the same four classes, so this reads the same whichever one is selected.
+
+    Also the one place every model call passes through, which is why the
+    per-user quota is enforced here rather than at each of the three tabs.
     """
+    if not within_quota():
+        return None
     try:
         return fn(*args, **kwargs)
     except llm.LLMOverloaded as exc:
