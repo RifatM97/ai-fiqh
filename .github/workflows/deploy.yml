@@ -1,0 +1,107 @@
+# Ship the web app when its code changes on main (docs/deployment.md §8).
+#
+# Signs in to Azure with OIDC: GitHub mints a short-lived token for this job,
+# and Azure trusts it through the federated credential on id-ai-fiqh-github
+# (infra/modules/ci-identity.bicep). No Azure secret is stored in GitHub — the
+# three AZURE_* values below are identifiers, not credentials.
+#
+# Images only. Infrastructure changes stay a manual `infra/deploy.sh`: this
+# identity deliberately holds no role-assignment rights, which the Bicep
+# template needs on every run.
+
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "index/**"
+      - "docker/web.Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run two deploys at once, and never cancel one halfway through a
+# revision change.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+env:
+  RG: rg-ai-fiqh-learn
+  APP: ai-fiqh-web
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Build and roll out
+    needs: ci
+    runs-on: ubuntu-latest
+    # The federated credential trusts this environment only, and the
+    # environment's branch policy admits main only.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prepare
+        run: |
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+          ACR=$(az acr list -g "$RG" --query "[0].name" -o tsv)
+          echo "ACR=$ACR" >> "$GITHUB_ENV"
+          # The commit SHA is the tag: immutable, and it says exactly which
+          # code is running.
+          echo "IMAGE=$ACR.azurecr.io/ai-fiqh-web:$GITHUB_SHA" >> "$GITHUB_ENV"
+
+      # Built inside Azure, so the image is linux/amd64 regardless of runner.
+      - name: Build image
+        run: az acr build --registry "$ACR" --image "ai-fiqh-web:$GITHUB_SHA" --file docker/web.Dockerfile .
+
+      - name: Roll out
+        run: az containerapp update -n "$APP" -g "$RG" --image "$IMAGE" -o none
+
+      - name: Wait for the new revision
+        run: |
+          for _ in $(seq 1 40); do
+            latest=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestRevisionName -o tsv)
+            ready=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestReadyRevisionName -o tsv)
+            [ "$latest" = "$ready" ] && break
+            sleep 15
+          done
+          if [ "$latest" != "$ready" ]; then
+            echo "::error::Revision $latest did not become ready. Check its system logs: az containerapp logs show -n $APP -g $RG --type system"
+            exit 1
+          fi
+          running=$(az containerapp show -n "$APP" -g "$RG" --query "properties.template.containers[0].image" -o tsv)
+          if [ "$running" != "$IMAGE" ]; then
+            echo "::error::Expected $IMAGE, app reports $running"
+            exit 1
+          fi
+          echo "Revision $latest is ready on $IMAGE"
+
+      # /_stcore/health is excluded from sign-in, so it answers without a
+      # session — the one URL a pipeline can check end to end.
+      - name: Health check
+        run: |
+          fqdn=$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          for _ in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://$fqdn/_stcore/health" || true)
+            [ "$code" = "200" ] && { echo "healthy"; exit 0; }
+            sleep 6
+          done
+          echo "::error::https://$fqdn/_stcore/health returned $code"
+          exit 1

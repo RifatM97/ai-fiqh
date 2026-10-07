@@ -2,7 +2,10 @@
 __pycache__/
 *.pyc
 .DS_Store
-index/
+# The index itself (chunks.json, embeddings.npy, embeddings.meta.json) is
+# committed: CI builds the image from a checkout, and the embeddings cache is
+# only trusted when its meta file matches. Only the build checkpoint stays out.
+index/embeddings.partial.npz
 .ipynb_checkpoints/
 .env
 

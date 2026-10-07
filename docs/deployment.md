@@ -8,8 +8,9 @@ logs in Log Analytics, all declared in Bicep. Runbooks: §7 (core), §7b
 **As of 2026-10-01** both apps run inside the VNet (`cae-aifiqh-net` in
 `snet-aca`) with a public endpoint. APIM was built and removed — it cannot proxy
 Streamlit's WebSocket (§4b) — and rate limiting lives in the app instead (§4c).
-Current architecture: §4 *As built*. Still outstanding: private endpoints,
-billing alerts, Application Insights, CI/CD. See `PROJECT_TRACKER.md` for build status — the app itself is
+Current architecture: §4 *As built*. CI/CD: §8 (built 2026-10-07, one-time
+setup pending). Still outstanding: private endpoints, billing alerts,
+Application Insights. See `PROJECT_TRACKER.md` for build status — the app itself is
 feature-complete; this is about putting it in front of users.
 
 **Reframed 2026-09-16.** This is now explicitly a learning vehicle for
@@ -186,7 +187,7 @@ is kept warm because a GPU cold start cannot fit that timeout either.
 | **Container Apps authentication + Google** | ✅ deployed | Sign-in before any request reaches the app | OAuth redirect flow, principal headers — see §4a |
 | **In-app rate limiter** | ✅ built (image `v4`) | Per-user cap on model calls | See §4c |
 | **Application Insights** | ⏳ not built | Tracing and dashboards on top of the logs | — |
-| **GitHub Actions + OIDC federated credential** | ⏳ not built | Build images, deploy revisions | Federated identity instead of a stored secret |
+| **GitHub Actions + OIDC federated credential** | ✅ built | CI on every push; deploys images on merge to `main` — see §8 | Federated identity instead of a stored secret; why infra stays manual |
 | **Private endpoints** (Key Vault, Azure OpenAI) | ⏳ next | Keep those calls off the public internet | The reason the VNet was kept |
 | ~~Entra ID app registration~~ | ❌ blocked | — | Tenant forbids app registrations; Google used instead (§4a) |
 | ~~Azure API Management~~ | ❌ removed | — | Cannot proxy Streamlit's WebSocket (§4b); revisit with a React + REST frontend |
@@ -786,7 +787,8 @@ stream carries decisions and identifiers, not what anyone asked.
   config needs a forward-proxy convention (`proxy-convention` in `az
   containerapp auth update`). Without it, Container Apps builds callback URLs
   from the internal host and sign-in breaks.
-- CI/CD pipeline shape — not sketched.
+- ~~CI/CD pipeline shape~~ — **built 2026-10-07** (§8). One-time GitHub setup
+  pending; the first deploy proves the OIDC trust works.
 
 ---
 
@@ -1328,3 +1330,160 @@ az containerapp update -n ai-fiqh-web -g $RG --set-env-vars AI_FIQH_RATE_LIMIT_P
 ```
 
 The refusal is also logged: `quota reached for <prefix>…` in the log stream.
+
+---
+
+## 8. CI/CD — GitHub Actions
+
+Added 2026-10-07. Before this, every deploy was manual, and that had already
+produced two silent failures: a deploy that kept running `v3` because a tag
+wasn't bumped, and VNet settings that lived only on a command line.
+
+### What runs where
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | every push and pull request; called by the deploys | Smoke tests (`tests/test_smoke.py`) and Bicep compilation. No Azure login, so it is safe on pull requests from forks |
+| `deploy.yml` | push to `main` touching `src/`, `index/`, `docker/web.Dockerfile`, `pyproject.toml` or `uv.lock`; manual dispatch | Runs CI first, then builds `ai-fiqh-web:<commit SHA>` in ACR, rolls the app onto it, waits for the revision and checks `/_stcore/health` |
+| `deploy-ollama.yml` | push to `main` touching `docker/ollama.Dockerfile`; manual dispatch | Same for the 11 GB fallback image, with longer timeouts for the GPU node and pull |
+| `infra/deploy.sh` | **by hand** | Infrastructure (Bicep). Reads the image tags actually running and passes them through |
+
+**Images are tagged with the commit SHA**, not `v1`/`v2`: immutable, and the
+running image says exactly which commit it came from.
+
+### Signing in without a secret
+
+GitHub authenticates to Azure with **OIDC**. Each deploy job gets a short-lived
+token from GitHub; Azure exchanges it for an Azure token because a federated
+credential on `id-ai-fiqh-github` (`infra/modules/ci-identity.bicep`) trusts
+exactly this subject:
+
+```
+repo:RifatM97/ai-fiqh:environment:production
+```
+
+The repo and the GitHub environment both have to match, and the
+`production` environment only admits the `main` branch — so a workflow on
+another branch, or in a fork, cannot get in. Nothing is stored in GitHub except
+three identifiers (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+`AZURE_SUBSCRIPTION_ID`), and none of them is a credential.
+
+A **user-assigned managed identity** rather than an Entra app registration,
+because the tenant forbids app registrations (§4a). A managed identity is an
+Azure resource, so Azure RBAC governs it, not Entra app policy.
+
+Its rights are the narrowest that work: Contributor on the registry (`az acr
+build` schedules an ACR Task, which `AcrPush` does not cover), Contributor on
+each of the two apps, and Reader on the resource group.
+
+### Why infrastructure stays manual
+
+The CI identity **cannot** deploy Bicep, by design and by constraint. The
+template re-applies its role assignments on every run, which requires
+`roleAssignments/write`. Your RBAC Administrator role is conditioned to block
+granting the roles that carry it, so the CI identity can't be given it — and
+an automated identity that can grant permissions is exactly what least
+privilege says to avoid anyway. App code ships automatically; infrastructure
+changes are reviewed and run by hand.
+
+**Always deploy infrastructure with `infra/deploy.sh`, never `az deployment
+group create` directly.** CI/CD owns the running image tags; the tags in
+`infra/main.bicepparam` are only fallbacks, and deploying with them would
+quietly roll both apps back to old images — the `v3` incident again.
+
+```bash
+infra/deploy.sh                       # keeps whatever images are running
+infra/deploy.sh ollamaMinReplicas=0   # extra overrides pass straight through
+```
+
+### The index is now in git
+
+`index/` was gitignored, but CI builds the image from a checkout, so the image
+would have had no retrieval index. All three files are committed:
+`chunks.json`, `embeddings.npy` and `embeddings.meta.json`. The last one matters
+as much as the vectors: the embeddings cache is trusted only when the meta file
+matches, and without it the app would re-embed the whole corpus through Voyage
+on its first question. `test_committed_index_loads_without_reembedding` fails if
+that ever happens (verified by hiding the file).
+
+This publishes nothing new: the repository is public, and the source PDF
+(`data/Fiqh Class Book.pdf`) is already tracked in it. Whether the book belongs
+in a public repository at all is a separate copyright question that predates
+this change.
+
+### The tests, and what they caught on day one
+
+Twelve tests, none needing credentials: the app renders with no model keys, the
+committed index loads with a warm embeddings cache, and the rate limiter's
+behaviour. The quota logic moved from `app.py` into `src/ai_fiqh/quota.py` so it
+can be tested without a browser.
+
+**They caught a real bug before it shipped.** The "try again in N minutes"
+message used `remaining // 60 + 1`, which says 61 minutes when exactly an hour
+remains. The earlier hand test showed 60 only because a few milliseconds had
+elapsed. Now a ceiling, with a test pinning the boundary cases.
+
+### One-time setup
+
+```bash
+RG=rg-ai-fiqh-learn
+```
+
+**1. Create the CI identity.** `deployCiIdentity = true` is in the params file:
+
+```bash
+infra/deploy.sh
+```
+
+The federated credential was the risky part — corporate Azure Policy can block
+them — and it **succeeded** on 2026-10-07. That run failed only on a mistyped
+Reader role ID in the template (`RoleDefinitionDoesNotExist`), since corrected;
+every role ID in `infra/modules/` is now verified against `az role definition
+list`.
+
+**2. Collect the three identifiers:**
+
+```bash
+CLIENT_ID=$(az identity show -g $RG -n id-ai-fiqh-github --query clientId -o tsv)
+TENANT_ID=$(az account show --query tenantId -o tsv)
+SUB_ID=$(az account show --query id -o tsv)
+```
+
+**3. Configure GitHub as the repository owner.** The corporate account
+can't administer the repo:
+
+```bash
+gh auth switch -u RifatM97
+
+# The environment the federated credential trusts, open to main only.
+# The body goes in as JSON: the bracketed `-F "deployment_branch_policy[...]"`
+# form produced "unexpected end of JSON input" and created nothing (2026-10-07).
+gh api -X PUT repos/RifatM97/ai-fiqh/environments/production --input - <<'EOF'
+{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+EOF
+gh api -X POST repos/RifatM97/ai-fiqh/environments/production/deployment-branch-policies \
+  -f name=main
+
+# Scoped to the environment, so only jobs running in it can read them.
+gh variable set AZURE_CLIENT_ID       --env production --body "$CLIENT_ID"
+gh variable set AZURE_TENANT_ID       --env production --body "$TENANT_ID"
+gh variable set AZURE_SUBSCRIPTION_ID --env production --body "$SUB_ID"
+```
+
+**4. Ship it.** Commit, push the branch, and open a pull request to `main`.
+CI runs on the pull request. Merging it triggers the first deploy — and `main`
+must contain this release branch's work, or the first deploy ships the pre-VNet
+code.
+
+### Verify the first deploy
+
+1. Both CI jobs are green on the pull request.
+2. The **Deploy web** run on `main` shows the Azure login succeeding with no
+   secret configured, and ends at "healthy".
+3. The running image is the merge commit:
+   ```bash
+   az containerapp show -n ai-fiqh-web -g $RG --query "properties.template.containers[0].image" -o tsv
+   # …/ai-fiqh-web:<SHA of the merge commit>
+   ```
+4. Sign in and ask a question on the live app.
+5. Run `infra/deploy.sh`, then repeat step 3: the tag must be unchanged.
