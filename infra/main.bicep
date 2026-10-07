@@ -70,6 +70,14 @@ param apimRateLimitCalls int = 60
 @description('Overrides the hostname sign-in redirects are built from. Defaults to APIM’s gateway hostname when APIM is deployed.')
 param publicHostname string = ''
 
+// --- CI/CD (§8) ----------------------------------------------------------------
+
+@description('true creates the identity GitHub Actions deploys as, trusted via a federated credential. Requires deployApps (it is granted rights on the apps).')
+param deployCiIdentity bool = false
+
+@description('owner/repo GitHub Actions runs from.')
+param githubRepository string = 'RifatM97/ai-fiqh'
+
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
 var apimName = 'apim-${namePrefix}-${uniqueSuffix}'
 var effectivePublicHostname = !empty(publicHostname)
@@ -162,6 +170,21 @@ module apim 'modules/apim.bicep' = if (deployApim && useVnet && deployApps) {
   ]
 }
 
+module ciIdentity 'modules/ci-identity.bicep' = if (deployCiIdentity && deployApps) {
+  name: 'ci-identity'
+  params: {
+    location: location
+    acrName: acr.outputs.name
+    webAppName: webAppName
+    ollamaAppName: ollamaAppName
+    githubRepository: githubRepository
+  }
+  // The role assignments target the apps by name, so they must exist first.
+  dependsOn: [
+    containerApps
+  ]
+}
+
 output acrName string = acr.outputs.name
 output acrLoginServer string = acr.outputs.loginServer
 output keyVaultName string = keyVault.outputs.name
@@ -169,3 +192,5 @@ output keyVaultName string = keyVault.outputs.name
 output webFqdn string = deployApps ? containerApps!.outputs.webFqdn : ''
 output publicUrl string = deployApim ? apim!.outputs.gatewayUrl : (deployApps ? 'https://${containerApps!.outputs.webFqdn}' : '')
 output signInRedirectUri string = deployApim ? '${apim!.outputs.gatewayUrl}/.auth/login/google/callback' : ''
+// The value GitHub needs as the AZURE_CLIENT_ID repository variable.
+output ciClientId string = (deployCiIdentity && deployApps) ? ciIdentity!.outputs.clientId : ''

@@ -1,0 +1,47 @@
+# Checks that run on every push and pull request, and before every deploy
+# (deploy workflows call this one). No Azure login: nothing here needs a
+# credential, which is also why it can run on a pull request from anywhere.
+# docs/deployment.md §8.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Exact version: setup-uv publishes no floating major tag (`@v10` fails
+      # to resolve), unlike actions/checkout and azure/login.
+      - uses: astral-sh/setup-uv@v10.2.0
+
+      # --frozen: fail if uv.lock disagrees with pyproject.toml rather than
+      # quietly resolving something different from what ships.
+      - name: Install
+        run: uv sync --frozen --group dev --group ui --group cloud
+
+      - name: Test
+        run: uv run pytest -q
+
+  infra:
+    name: Bicep compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Bicep
+        run: az bicep install
+
+      - name: Build template and parameters
+        run: |
+          az bicep build --file infra/main.bicep --outdir "$RUNNER_TEMP/bicep"
+          az bicep build-params --file infra/main.bicepparam --outfile "$RUNNER_TEMP/bicep/main.parameters.json"

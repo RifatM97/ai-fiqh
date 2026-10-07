@@ -10,9 +10,11 @@ param namePrefix = 'aifiqh'
 param useVnet = true
 param environmentName = 'cae-aifiqh-net'
 
-// Explicit tags, not 'latest': Container Apps only rolls a new revision when
-// the image reference changes, so re-pushing under the same tag deploys
-// nothing. Bump these (v2, v3, ...) with each new image.
+// Fallback image tags only. Once CI/CD runs, GitHub Actions owns the running
+// image (tagged with the commit SHA), so these go stale on purpose. Deploy
+// infrastructure with `infra/deploy.sh`, which reads the tags actually running
+// and passes them through — running Bicep directly with these values would
+// roll the apps back to them (§8).
 param webImageTag = 'v4'
 param ollamaImageTag = 'v2'
 
@@ -29,3 +31,7 @@ param azureOpenAiDeployment = 'gpt-5.4'
 // never set up. Once it has been, emptying this does NOT turn it off; use
 // `az containerapp auth update --enabled false` (§7b).
 param googleClientId = '760706835429-bjur3n33n3m5ijvd1fb4ect7u48bvo6q.apps.googleusercontent.com'
+
+// The identity GitHub Actions deploys as (§8). Federated, so there is no
+// secret to store in GitHub.
+param deployCiIdentity = true

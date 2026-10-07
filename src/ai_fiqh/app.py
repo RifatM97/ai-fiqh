@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 import os
 import sys
-import threading
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -29,7 +28,7 @@ import streamlit as st
 if __package__ in (None, ""):  # `streamlit run` executes this as a script
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ai_fiqh import llm, qa, revision
+from ai_fiqh import llm, qa, quota, revision
 from ai_fiqh.index import ABSTAIN_BELOW, MIN_RERANK_SCORE, Retriever
 from ai_fiqh.normalize import display_title
 
@@ -83,19 +82,11 @@ def require_client():
 
 RATE_LIMIT_PER_HOUR = int(os.environ.get("AI_FIQH_RATE_LIMIT_PER_HOUR", "20"))
 
-_rate_lock = threading.Lock()
-
 
 @st.cache_resource(show_spinner=False)
-def _request_times() -> dict[str, list[float]]:
-    """Per-user request timestamps, shared by every session in this process.
-
-    In-process on purpose: the app runs as a single replica, so a counter here
-    is enough and needs no database. Two consequences worth knowing rather than
-    discovering: the counts reset when the revision restarts, and they would be
-    per-replica if this ever scaled out.
-    """
-    return defaultdict(list)
+def _quota() -> quota.Quota:
+    """One quota for the whole server, shared by every session (see quota.py)."""
+    return quota.Quota(RATE_LIMIT_PER_HOUR)
 
 
 def _principal() -> str | None:
@@ -119,28 +110,16 @@ def within_quota() -> bool:
     time without bound. Renders the refusal itself, so callers only branch.
     """
     who = _principal()
-    if RATE_LIMIT_PER_HOUR <= 0 or who is None:
+    wait_minutes = _quota().admit(who, time.time())
+    if wait_minutes is None:
         return True
-
-    now = time.time()
-    with _rate_lock:
-        recent = _request_times()[who]
-        recent[:] = [t for t in recent if now - t < 3600]
-        if len(recent) >= RATE_LIMIT_PER_HOUR:
-            wait_minutes = int((3600 - (now - recent[0])) // 60) + 1
-            # Identifier truncated: enough to correlate, not a stored identity.
-            log.info(
-                "quota reached for %s… (%d requests in the last hour)",
-                who[:8],
-                len(recent),
-            )
-            st.warning(
-                f"You have used this hour's {RATE_LIMIT_PER_HOUR} requests. "
-                f"Please try again in about {wait_minutes} minute(s)."
-            )
-            return False
-        recent.append(now)
-    return True
+    # Identifier truncated: enough to correlate, not a stored identity.
+    log.info("quota reached for %s… (limit %d/hour)", who[:8], RATE_LIMIT_PER_HOUR)
+    st.warning(
+        f"You have used this hour's {RATE_LIMIT_PER_HOUR} requests. "
+        f"Please try again in about {wait_minutes} minute(s)."
+    )
+    return False
 
 
 def guarded(fn, *args, **kwargs):
