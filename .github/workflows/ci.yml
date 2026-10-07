@@ -20,7 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v10
+      # Exact version: setup-uv publishes no floating major tag (`@v10` fails
+      # to resolve), unlike actions/checkout and azure/login.
+      - uses: astral-sh/setup-uv@v10.2.0
 
       # --frozen: fail if uv.lock disagrees with pyproject.toml rather than
       # quietly resolving something different from what ships.
