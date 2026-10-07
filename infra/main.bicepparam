@@ -35,3 +35,8 @@ param googleClientId = '760706835429-bjur3n33n3m5ijvd1fb4ect7u48bvo6q.apps.googl
 // The identity GitHub Actions deploys as (§8). Federated, so there is no
 // secret to store in GitHub.
 param deployCiIdentity = true
+
+// This repo uses GitHub's immutable OIDC subjects, which embed these IDs:
+//   gh api repos/RifatM97/ai-fiqh/actions/oidc/customization/sub
+param githubOwnerId = '72074116'
+param githubRepositoryId = '1318088740'

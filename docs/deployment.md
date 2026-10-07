@@ -1359,8 +1359,23 @@ credential on `id-ai-fiqh-github` (`infra/modules/ci-identity.bicep`) trusts
 exactly this subject:
 
 ```
-repo:RifatM97/ai-fiqh:environment:production
+repo:RifatM97@72074116/ai-fiqh@1318088740:environment:production
 ```
+
+**The numbers are not decoration.** This repo has GitHub's immutable OIDC
+subjects enabled (`use_immutable_subject: true`), which embed the owner and
+repository IDs beside their names. The first deploy failed because the
+credential trusted the name-only form `repo:RifatM97/ai-fiqh:…` and GitHub
+presented the one above (`AADSTS700213: No matching federated identity
+record`, 2026-10-07). The IDs live in `infra/main.bicepparam`; for any other
+repo, read the exact prefix GitHub will send with:
+
+```bash
+gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+```
+
+The immutable form is also the safer one to trust: a name can be reused after
+a rename or deletion, an ID cannot.
 
 The repo and the GitHub environment both have to match, and the
 `production` environment only admits the `main` branch — so a workflow on

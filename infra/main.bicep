@@ -78,6 +78,10 @@ param deployCiIdentity bool = false
 @description('owner/repo GitHub Actions runs from.')
 param githubRepository string = 'RifatM97/ai-fiqh'
 
+@description('Numeric owner and repository IDs for GitHub immutable OIDC subjects (see ci-identity.bicep).')
+param githubOwnerId string = ''
+param githubRepositoryId string = ''
+
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
 var apimName = 'apim-${namePrefix}-${uniqueSuffix}'
 var effectivePublicHostname = !empty(publicHostname)
@@ -178,6 +182,8 @@ module ciIdentity 'modules/ci-identity.bicep' = if (deployCiIdentity && deployAp
     webAppName: webAppName
     ollamaAppName: ollamaAppName
     githubRepository: githubRepository
+    githubOwnerId: githubOwnerId
+    githubRepositoryId: githubRepositoryId
   }
   // The role assignments target the apps by name, so they must exist first.
   dependsOn: [

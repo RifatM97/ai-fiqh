@@ -24,8 +24,24 @@ param ollamaAppName string
 @description('owner/repo the federated credential trusts.')
 param githubRepository string
 
+@description('Numeric IDs of the owner and repository. Needed because the repo uses GitHub\'s immutable OIDC subjects; find them with `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`. Empty falls back to the name-only subject.')
+param githubOwnerId string = ''
+param githubRepositoryId string = ''
+
 @description('GitHub environment deploy jobs run in. Its branch policy decides which branches can deploy.')
 param githubEnvironment string = 'production'
+
+// The subject must match what GitHub presents character for character. This
+// repo has `use_immutable_subject: true`, so GitHub sends
+//   repo:RifatM97@72074116/ai-fiqh@1318088740:environment:production
+// not the name-only `repo:RifatM97/ai-fiqh:...` — the first deploy failed on
+// exactly that (AADSTS700213, 2026-10-07). The IDs are also the safer thing to
+// trust: names can be reused after a rename or deletion, IDs cannot.
+var githubOwner = split(githubRepository, '/')[0]
+var githubRepoName = split(githubRepository, '/')[1]
+var subjectPrefix = empty(githubOwnerId) || empty(githubRepositoryId)
+  ? 'repo:${githubRepository}'
+  : 'repo:${githubOwner}@${githubOwnerId}/${githubRepoName}@${githubRepositoryId}'
 
 // Looked up with `az role definition list --name <role>`, not from memory —
 // a mistyped Reader ID failed the first deploy (RoleDefinitionDoesNotExist).
@@ -54,7 +70,7 @@ resource githubTrust 'Microsoft.ManagedIdentity/userAssignedIdentities/federated
   name: 'github-${githubEnvironment}'
   properties: {
     issuer: 'https://token.actions.githubusercontent.com'
-    subject: 'repo:${githubRepository}:environment:${githubEnvironment}'
+    subject: '${subjectPrefix}:environment:${githubEnvironment}'
     audiences: [
       'api://AzureADTokenExchange'
     ]
