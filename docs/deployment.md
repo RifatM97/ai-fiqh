@@ -158,7 +158,7 @@ flowchart TB
 
 | | |
 |---|---|
-| Public entry | Container Apps ingress on `ai-fiqh-web`, directly — no gateway (APIM could not proxy Streamlit's WebSocket, §4b) |
+| Public entry | Container Apps ingress on `ai-fiqh-web`, directly — no gateway (APIM could not proxy Streamlit's WebSocket, §4b). **Allow-listed to one IP** (§4d) |
 | Sign-in | Container Apps authentication with Google; consent screen *Internal*, so Vodafone Workspace accounts only (§4a) |
 | Rate limiting | In the app, per signed-in user, 20 model calls per rolling hour (§4c) |
 | Networking | In the VNet with a public endpoint (`internal: false`). Outbound calls to Azure OpenAI and Voyage still cross the public internet — no private endpoints yet |
@@ -185,7 +185,8 @@ is kept warm because a GPU cold start cannot fit that timeout either.
 | **Log Analytics** | ✅ deployed | Console and system logs for both apps, queried with KQL | Diagnosing from system events when a container never starts |
 | **Bicep** (IaC) | ✅ in use | Declares everything; `main.bicepparam` holds the running state | Staged deployments, what-if, incremental mode's limits |
 | **Container Apps authentication + Google** | ✅ deployed | Sign-in before any request reaches the app | OAuth redirect flow, principal headers — see §4a |
-| **In-app rate limiter** | ✅ built (image `v4`) | Per-user cap on model calls | See §4c |
+| **In-app rate limiter** | ✅ deployed | Per-user cap on model calls | See §4c |
+| **Ingress IP allow-list** | ✅ built | Only listed addresses can connect, before sign-in | Layered access control; probes vs external health checks — see §4d |
 | **Application Insights** | ⏳ not built | Tracing and dashboards on top of the logs | — |
 | **GitHub Actions + OIDC federated credential** | ✅ built | CI on every push; deploys images on merge to `main` — see §8 | Federated identity instead of a stored secret; why infra stays manual |
 | **Private endpoints** (Key Vault, Azure OpenAI) | ⏳ next | Keep those calls off the public internet | The reason the VNet was kept |
@@ -699,6 +700,43 @@ Deliberate properties, recorded so they are not mistaken for oversights:
 
 It bounds what one account can spend. It does not bound total spend: that
 needs billing alerts, still outstanding.
+
+## 4d. IP allow-list — added 2026-10-08
+
+`ai-fiqh-web`'s ingress accepts only the addresses in `allowedIpRanges`
+(`infra/main.bicepparam`) — currently `185.238.221.84/32`, a Community Fibre
+home connection. Anything else gets a `403` **at the ingress, before
+sign-in**, so scanners and bots never reach the Google prompt.
+
+It is the outermost of three layers, each stopping something different:
+the allow-list decides who can connect at all, Google sign-in decides who is
+a real (Vodafone) person, and the per-user quota (§4c) bounds what that
+person can spend.
+
+**Two things it changed elsewhere:**
+
+- **The deploy workflow's external health check was removed.** It curled
+  `/_stcore/health` from a GitHub runner, whose IP isn't on the list, so every
+  deploy would have failed after succeeding. Replaced by a **readiness probe**
+  on the container: the platform checks `/_stcore/health` from inside the
+  environment, and a revision only reports ready once it answers. The
+  workflow's "revision ready" check now means "healthy", not just "started".
+- `ai-fiqh-ollama` is unaffected — its ingress is internal, and the web app
+  reaches it inside the environment.
+
+**If your IP changes you will be locked out**, with a plain `403` and no
+sign-in page. A residential address is usually stable but not guaranteed.
+To get back in, from any machine where `az` is signed in:
+
+```bash
+NEW_IP=$(curl -s https://api.ipify.org)   # run this on the machine you want to allow
+az containerapp ingress access-restriction set -n ai-fiqh-web -g rg-ai-fiqh-learn \
+  --rule-name allow-0 --ip-address "$NEW_IP/32" --action Allow
+```
+
+Then put the same address in `allowedIpRanges`, or the next
+`infra/deploy.sh` will put the old one back. Office, VPN and mobile
+connections are blocked unless their addresses are added as further entries.
 
 ### Logging — added 2026-09-18
 
@@ -1359,8 +1397,23 @@ credential on `id-ai-fiqh-github` (`infra/modules/ci-identity.bicep`) trusts
 exactly this subject:
 
 ```
-repo:RifatM97/ai-fiqh:environment:production
+repo:RifatM97@72074116/ai-fiqh@1318088740:environment:production
 ```
+
+**The numbers are not decoration.** This repo has GitHub's immutable OIDC
+subjects enabled (`use_immutable_subject: true`), which embed the owner and
+repository IDs beside their names. The first deploy failed because the
+credential trusted the name-only form `repo:RifatM97/ai-fiqh:…` and GitHub
+presented the one above (`AADSTS700213: No matching federated identity
+record`, 2026-10-07). The IDs live in `infra/main.bicepparam`; for any other
+repo, read the exact prefix GitHub will send with:
+
+```bash
+gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+```
+
+The immutable form is also the safer one to trust: a name can be reused after
+a rename or deletion, an ID cannot.
 
 The repo and the GitHub environment both have to match, and the
 `production` environment only admits the `main` branch — so a workflow on

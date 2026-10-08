@@ -91,17 +91,8 @@ jobs:
             echo "::error::Expected $IMAGE, app reports $running"
             exit 1
           fi
-          echo "Revision $latest is ready on $IMAGE"
-
-      # /_stcore/health is excluded from sign-in, so it answers without a
-      # session — the one URL a pipeline can check end to end.
-      - name: Health check
-        run: |
-          fqdn=$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
-          for _ in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "https://$fqdn/_stcore/health" || true)
-            [ "$code" = "200" ] && { echo "healthy"; exit 0; }
-            sleep 6
-          done
-          echo "::error::https://$fqdn/_stcore/health returned $code"
-          exit 1
+          # "Ready" is a real health check, not just "started": the web
+          # container has a readiness probe on /_stcore/health, run by the
+          # platform from inside the environment. There is no external curl
+          # here because the ingress allow-list (§4d) refuses GitHub's runners.
+          echo "Revision $latest is ready (readiness probe passing) on $IMAGE"

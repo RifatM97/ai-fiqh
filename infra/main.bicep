@@ -58,6 +58,9 @@ param webAppName string = 'ai-fiqh-web'
 
 param ollamaAppName string = 'ai-fiqh-ollama'
 
+@description('CIDRs allowed to reach the web app (§4d). Empty leaves it open.')
+param allowedIpRanges array = []
+
 @description('true creates API Management in the VNet. Provisioning takes 30-45+ minutes. Requires useVnet.')
 param deployApim bool = false
 
@@ -77,6 +80,10 @@ param deployCiIdentity bool = false
 
 @description('owner/repo GitHub Actions runs from.')
 param githubRepository string = 'RifatM97/ai-fiqh'
+
+@description('Numeric owner and repository IDs for GitHub immutable OIDC subjects (see ci-identity.bicep).')
+param githubOwnerId string = ''
+param githubRepositoryId string = ''
 
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
 var apimName = 'apim-${namePrefix}-${uniqueSuffix}'
@@ -124,6 +131,7 @@ module containerApps 'modules/container-apps.bicep' = if (deployApps) {
     environmentName: environmentName
     webAppName: webAppName
     ollamaAppName: ollamaAppName
+    allowedIpRanges: allowedIpRanges
     infrastructureSubnetId: useVnet ? network!.outputs.acaSubnetId : ''
     environmentInternal: environmentInternal
     publicHostname: effectivePublicHostname
@@ -178,6 +186,8 @@ module ciIdentity 'modules/ci-identity.bicep' = if (deployCiIdentity && deployAp
     webAppName: webAppName
     ollamaAppName: ollamaAppName
     githubRepository: githubRepository
+    githubOwnerId: githubOwnerId
+    githubRepositoryId: githubRepositoryId
   }
   // The role assignments target the apps by name, so they must exist first.
   dependsOn: [
