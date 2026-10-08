@@ -28,6 +28,16 @@ param environmentInternal bool = false
 param webAppName string = 'ai-fiqh-web'
 param ollamaAppName string = 'ai-fiqh-ollama'
 
+@description('CIDRs allowed to reach ai-fiqh-web, e.g. [\'203.0.113.7/32\']. Empty leaves it open to the internet.')
+param allowedIpRanges array = []
+
+// A variable because Bicep cannot loop inside a conditional expression.
+var webIpRules = [for (cidr, i) in allowedIpRanges: {
+  name: 'allow-${i}'
+  ipAddressRange: cidr
+  action: 'Allow'
+}]
+
 @description('Hostname APIM serves the app on. Sets the auth layer to build sign-in redirects from X-Forwarded-Host, without which sign-in breaks behind the gateway.')
 param publicHostname string = ''
 
@@ -261,6 +271,11 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         external: !environmentInternal
         targetPort: 8000
         transport: 'auto'
+        // Allow-list (§4d). Empty means open to the internet, as before. Any
+        // address not listed gets a 403 at the ingress — before sign-in, so
+        // bots never reach the Google prompt. Container Apps requires every
+        // rule to share one action, so these are all Allow.
+        ipSecurityRestrictions: empty(allowedIpRanges) ? null : webIpRules
       }
       registries: [
         {
@@ -304,6 +319,21 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('1')
             memory: '2Gi'
           }
+          // The platform checks health from inside the environment, so a
+          // revision only reports ready once Streamlit actually answers. This
+          // replaces the deploy workflow's external health check, which an IP
+          // allow-list would block (a GitHub runner is not on the list).
+          probes: [
+            {
+              type: 'Readiness'
+              httpGet: {
+                path: '/_stcore/health'
+                port: 8000
+              }
+              periodSeconds: 10
+              failureThreshold: 3
+            }
+          ]
           env: [
             { name: 'AI_FIQH_LLM_PROVIDER', value: 'azure' }
             { name: 'AI_FIQH_LLM_FALLBACK_PROVIDER', value: 'ollama' }

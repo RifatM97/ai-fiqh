@@ -58,6 +58,9 @@ param webAppName string = 'ai-fiqh-web'
 
 param ollamaAppName string = 'ai-fiqh-ollama'
 
+@description('CIDRs allowed to reach the web app (§4d). Empty leaves it open.')
+param allowedIpRanges array = []
+
 @description('true creates API Management in the VNet. Provisioning takes 30-45+ minutes. Requires useVnet.')
 param deployApim bool = false
 
@@ -128,6 +131,7 @@ module containerApps 'modules/container-apps.bicep' = if (deployApps) {
     environmentName: environmentName
     webAppName: webAppName
     ollamaAppName: ollamaAppName
+    allowedIpRanges: allowedIpRanges
     infrastructureSubnetId: useVnet ? network!.outputs.acaSubnetId : ''
     environmentInternal: environmentInternal
     publicHostname: effectivePublicHostname

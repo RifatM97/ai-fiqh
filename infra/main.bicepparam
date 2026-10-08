@@ -18,6 +18,14 @@ param environmentName = 'cae-aifiqh-net'
 param webImageTag = 'v4'
 param ollamaImageTag = 'v2'
 
+// Who can reach the web app at all (§4d). Home broadband (Community Fibre):
+// usually stable, not guaranteed static. If it changes you get a 403 before
+// the sign-in page — update this and run infra/deploy.sh, or the one-line CLI
+// fix in §4d. Office, VPN and mobile are blocked unless added here.
+param allowedIpRanges = [
+  '185.238.221.84/32'
+]
+
 // 1 = GPU fallback kept warm, billed continuously. Set to 0 between sessions
 // to stop the cost; the fallback times out from cold until it's back to 1.
 param ollamaMinReplicas = 1
