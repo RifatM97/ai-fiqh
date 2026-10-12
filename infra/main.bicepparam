@@ -26,6 +26,11 @@ param allowedIpRanges = [
   '185.238.221.84/32'
 ]
 
+// Key Vault private endpoint (§4e), in two stages — flip B only after A is
+// verified, then prove a new revision still starts.
+param keyVaultPrivateEndpoint = true        // A: private path, public untouched
+param keyVaultRestrictPublicAccess = true  // B: public endpoint → your IP only
+
 // 1 = GPU fallback kept warm, billed continuously. Set to 0 between sessions
 // to stop the cost; the fallback times out from cold until it's back to 1.
 param ollamaMinReplicas = 1

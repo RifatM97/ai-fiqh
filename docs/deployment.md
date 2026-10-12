@@ -189,7 +189,8 @@ is kept warm because a GPU cold start cannot fit that timeout either.
 | **Ingress IP allow-list** | ✅ built | Only listed addresses can connect, before sign-in | Layered access control; probes vs external health checks — see §4d |
 | **Application Insights** | ⏳ not built | Tracing and dashboards on top of the logs | — |
 | **GitHub Actions + OIDC federated credential** | ✅ built | CI on every push; deploys images on merge to `main` — see §8 | Federated identity instead of a stored secret; why infra stays manual |
-| **Private endpoints** (Key Vault, Azure OpenAI) | ⏳ next | Keep those calls off the public internet | The reason the VNet was kept |
+| **Key Vault private endpoint** | 🔧 built, rollout pending | Vault reachable privately; public endpoint limited to your IP | Private DNS zones, and testing a platform behaviour rather than assuming it — see §4e |
+| **Azure OpenAI private endpoint** | ⏸ out of scope | — | Shared corporate resource; needs its owners to approve |
 | ~~Entra ID app registration~~ | ❌ blocked | — | Tenant forbids app registrations; Google used instead (§4a) |
 | ~~Azure API Management~~ | ❌ removed | — | Cannot proxy Streamlit's WebSocket (§4b); revisit with a React + REST frontend |
 
@@ -738,6 +739,92 @@ Then put the same address in `allowedIpRanges`, or the next
 `infra/deploy.sh` will put the old one back. Office, VPN and mobile
 connections are blocked unless their addresses are added as further entries.
 
+## 4e. Key Vault private endpoint — added 2026-10-08
+
+The first use of the VNet kept in §4b. The vault gets an address inside the
+VNet, and its public endpoint is then closed to everyone but your IP (a
+firewall rather than fully disabled, so you can still manage secrets from your
+laptop).
+
+**How the private path works.** A private endpoint (`pe-kv-aifiqh-gubmtg`)
+gives the vault an address in a new subnet, `snet-pe` (`10.0.5.0/28` — it
+can't go in `snet-aca`, which is delegated to Container Apps). A private DNS
+zone, `privatelink.vaultcore.azure.net`, linked to the VNet, makes the vault's
+ordinary hostname resolve to that address from *inside* the VNet only. No
+configuration changes anywhere: the same `kv-aifiqh-gubmtg.vault.azure.net`
+just resolves differently depending on where it is asked from.
+
+**The open question, settled by experiment rather than assumed.** The app
+never calls Key Vault itself — the Container Apps platform fetches the
+secrets and injects them as environment variables. Microsoft's documentation
+does not say whether that fetch runs inside the environment's VNet or from
+the platform outside it, and the private endpoint is only worth anything in the
+first case. So the rollout is two stages:
+
+- **Stage A** adds the private path and changes nothing else. Nothing can
+  break.
+- **Stage B** closes public access with **no "trusted Azure services"
+  bypass**, then starts a new revision. If it becomes ready, the secrets were
+  fetched over the private endpoint — proven, not assumed. If it fails, one
+  control-plane command reopens the vault.
+
+*Outcome: pending — record the result of stage B here.*
+
+### Runbook
+
+```bash
+RG=rg-ai-fiqh-learn
+```
+
+**Stage A** — `keyVaultPrivateEndpoint = true` is already set in
+`infra/main.bicepparam`:
+
+```bash
+infra/deploy.sh
+```
+
+Then check from *inside* the running app that the vault resolves privately:
+
+```bash
+az containerapp exec -n ai-fiqh-web -g $RG --command \
+  "python -c \"import socket; print(socket.gethostbyname('kv-aifiqh-gubmtg.vault.azure.net'))\""
+# want 10.0.5.x. A public address means the DNS zone link isn't taking effect —
+# stop here, stage B would fail.
+```
+
+**Stage B** — set `keyVaultRestrictPublicAccess = true`, deploy, and force the
+platform to fetch the secrets again by starting a new revision:
+
+```bash
+infra/deploy.sh
+az containerapp revision copy -n ai-fiqh-web -g $RG
+az containerapp revision list -n ai-fiqh-web -g $RG \
+  --query "[].{name:name, active:properties.active, health:properties.healthState, state:properties.runningState}" -o table
+```
+
+- **New revision healthy** → it works. Ask a question in the app to prove the
+  secrets resolved end to end, and confirm you still manage the vault from
+  home: `az keyvault secret show --vault-name kv-aifiqh-gubmtg -n voyage-api-key --query name`.
+- **New revision failing** → check `az containerapp logs show -n ai-fiqh-web -g $RG --type system`
+  for a Key Vault reference error, then reopen the vault. This works even with
+  the firewall up, because it goes through Azure's control plane, not the
+  vault's own endpoint:
+  ```bash
+  az keyvault update -n kv-aifiqh-gubmtg -g $RG --default-action Allow
+  ```
+  Set `keyVaultRestrictPublicAccess = false` again so the next deploy doesn't
+  re-apply it, and record the finding above.
+
+**Your IP is on two allow-lists now** — the ingress (§4d) and the vault
+firewall — both fed from `allowedIpRanges`. If the address changes, update it
+there and one `infra/deploy.sh` fixes both. The vault's own quick fix is
+`az keyvault network-rule add -n kv-aifiqh-gubmtg --ip-address <new-ip>`,
+which also goes through the control plane and so works while you're locked out.
+
+**Azure OpenAI stays public.** `randi` is a shared corporate resource in
+another resource group; a private endpoint to it would need its owners to
+approve the connection. `snet-pe` has room for one if that changes.
+
 ### Logging — added 2026-09-18
 
 The deployed app was effectively unobservable: Streamlit renders results to
@@ -789,9 +876,12 @@ stream carries decisions and identifiers, not what anyone asked.
   awaiting deployment as image `v4`.
 - ~~**The VNet is deployed but unused**~~ — **being fixed 2026-09-30**: §7d
   rebuilds the environment inside `snet-aca` with a public endpoint.
-- **Private endpoints to Key Vault and Azure OpenAI** — the reason for keeping
-  the VNet, and the natural next networking phase once §7d lands. Those calls
-  currently traverse the public internet.
+- **Key Vault private endpoint** — built 2026-10-08 (§4e); stage A and B
+  rollout pending, and stage B's result is the answer to whether Container
+  Apps fetches secrets over the VNet.
+- **Clean-up: leftover private DNS zones** `livelybay-d2a5d48a.…` from the
+  abandoned phase-3 internal environment, still linked to `vnet-aifiqh`.
+  Harmless (different domain from the running environment), but dead.
 - **Billing alerts on Azure OpenAI, Voyage and Anthropic** — still not set up.
   The per-user cap bounds one account's spend, not the total.
 - **If the frontend is ever rebuilt as React + REST**, revisit APIM: a

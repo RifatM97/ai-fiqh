@@ -14,6 +14,29 @@ param tenantId string = subscription().tenantId
 // role on the vault itself. Pass the deployer's object ID to grant it here.
 param deployerPrincipalId string = ''
 
+// Stage B of §4e. False keeps the vault fully public, as it was. True refuses
+// everything on the public endpoint except allowedIpRanges, so the app can
+// only reach it through the private endpoint.
+param restrictPublicAccess bool = false
+param allowedIpRanges array = []
+
+// bypass 'None' on purpose: no "trusted Azure services" exception. If the app
+// still starts with this in place, it is genuinely using the private path —
+// not a bypass quietly covering for it.
+//
+// /32 stripped to a bare address: that is the form Key Vault's docs show for a
+// single host, and some Azure firewalls (Storage) reject /32 outright. A
+// separate variable because Bicep cannot loop inside an object literal.
+var vaultIpRules = [for cidr in allowedIpRanges: {
+  value: replace(cidr, '/32', '')
+}]
+
+var restrictedAcls = {
+  defaultAction: 'Deny'
+  bypass: 'None'
+  ipRules: vaultIpRules
+}
+
 var keyVaultSecretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
@@ -28,6 +51,10 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
+    networkAcls: restrictPublicAccess ? restrictedAcls : {
+      defaultAction: 'Allow'
+      bypass: 'AzureServices'
+    }
   }
 }
 

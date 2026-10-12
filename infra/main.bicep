@@ -58,8 +58,16 @@ param webAppName string = 'ai-fiqh-web'
 
 param ollamaAppName string = 'ai-fiqh-ollama'
 
-@description('CIDRs allowed to reach the web app (§4d). Empty leaves it open.')
+@description('CIDRs allowed to reach the web app (§4d) and, once restricted, the Key Vault public endpoint (§4e). Empty leaves both open.')
 param allowedIpRanges array = []
+
+// --- Key Vault private endpoint (§4e), two stages ----------------------------
+
+@description('Stage A: give the vault a private endpoint in snet-pe and a private DNS zone. Leaves public access untouched. Requires useVnet.')
+param keyVaultPrivateEndpoint bool = false
+
+@description('Stage B: refuse the vault public endpoint to everything but allowedIpRanges. Deploy only after stage A, then prove a new revision still starts (§4e).')
+param keyVaultRestrictPublicAccess bool = true
 
 @description('true creates API Management in the VNet. Provisioning takes 30-45+ minutes. Requires useVnet.')
 param deployApim bool = false
@@ -113,6 +121,19 @@ module keyVault 'modules/keyvault.bicep' = {
     location: location
     name: 'kv-${namePrefix}-${uniqueSuffix}'
     deployerPrincipalId: deployerPrincipalId
+    restrictPublicAccess: keyVaultRestrictPublicAccess
+    allowedIpRanges: allowedIpRanges
+  }
+}
+
+module keyVaultPrivate 'modules/keyvault-private-endpoint.bicep' = if (keyVaultPrivateEndpoint && useVnet) {
+  name: 'keyvault-private-endpoint'
+  params: {
+    location: location
+    keyVaultId: keyVault.outputs.id
+    keyVaultName: keyVault.outputs.name
+    subnetId: network!.outputs.privateEndpointSubnetId
+    vnetId: network!.outputs.vnetId
   }
 }
 

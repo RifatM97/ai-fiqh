@@ -156,6 +156,15 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
           }
         }
       }
+      {
+        // Private endpoints (§4e). Its own subnet because snet-aca is
+        // delegated to Container Apps and cannot hold one. A /28 leaves room
+        // for a few more endpoints (e.g. Azure OpenAI) without resizing.
+        name: 'snet-pe'
+        properties: {
+          addressPrefix: '10.0.5.0/28'
+        }
+      }
     ]
   }
 }
@@ -164,3 +173,4 @@ output vnetId string = vnet.id
 output vnetName string = vnet.name
 output acaSubnetId string = vnet.properties.subnets[0].id
 output apimSubnetId string = vnet.properties.subnets[1].id
+output privateEndpointSubnetId string = vnet.properties.subnets[2].id
